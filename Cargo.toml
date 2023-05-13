@@ -1,0 +1,17 @@
+[package]
+name = "git_detector"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+
+
+[dependencies]
+regex = "1.5.4"#正则表达式
+clap = { version = "4.2.4", features = ["derive"] }#命令行clap.rs
+toml="0.7.3"
+walkdir = "2.3.2"
+rayon = "1.5.1"#处理多个文件搜索
+serde = { version = "1.0", features = ["derive"] }#JSON
+serde_json = "1.0"#JSON
