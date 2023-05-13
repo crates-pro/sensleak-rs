@@ -1,0 +1,7 @@
+Rust:
+safe, fast, productive.
+Pick three.
+Trust me.";
+URL = https://hooks.slack.com/workflows/B01234567/T01234567/abcdefghijklmnopqrstuvwx
+Vault Service Token = hvs.abcdefghijklmn1234567890opqrstuvwxyz_ABCDEFGHIJKLMNOPQRSTUVWXYZ
+
