@@ -37,7 +37,7 @@ Options:
   -c, --config <CONFIG>  Config path.. [default: gitleaks.toml]
   -o, --report <REPORT>  Path to write json leaks file [default: ]
   -v, --verbose          Show verbose output from scan
-  -p, --pretty           Pretty print json if leaks are present
+  -e, --pretty           Pretty print json if leaks are present
   -h, --help             Print help (see more with '--help')
   -V, --version          Print version
 
