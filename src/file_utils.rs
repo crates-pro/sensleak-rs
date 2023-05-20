@@ -1,9 +1,7 @@
 use regex::Regex;
 use std::fs;
-use std::path::{Path, PathBuf};
 use toml::Value;
 use std::collections::HashSet;
-
 use crate::error::MyError;
 use crate::models::Rule;
 use crate::models::Allowlist;
@@ -29,16 +27,16 @@ use crate::models::Allowlist;
 ///
 /// Returns an `Err` variant if the configuration file cannot be loaded or if there are any errors during parsing.
 ///
-pub fn load_config_file(config_file_path: &str,repo_file_path: &str,) -> Result<(Allowlist, Vec<Rule>, Vec<String>), MyError> {
+pub fn load_config_file(config_file_path: &str) -> Result<(Allowlist, Vec<Rule>, Vec<String>), MyError> {
     // Load config file
-    let toml_str =fs::read_to_string(config_file_path).map_err(|_| MyError::FileNotFound)?;
+    let toml_str =fs::read_to_string(config_file_path).map_err(|_| MyError::ConfigFileNotFound)?;
     let config_file_content: Value = toml::from_str(&toml_str).map_err(|_| MyError::InvalidTomlFile)?;
 
     // Config allowlist
-    let allowlist = config_allowlist(&config_file_content, repo_file_path)?;
+    let allowlist = config_allowlist(&config_file_content)?;
 
     // Config ruleslist and keywords
-    let (ruleslist, keywords) = config_ruleslist_and_keywords(&config_file_content, repo_file_path)?;
+    let (ruleslist, keywords) = config_ruleslist_and_keywords(&config_file_content)?;
 
     Ok((allowlist, ruleslist, keywords))
 }
@@ -62,7 +60,7 @@ pub fn load_config_file(config_file_path: &str,repo_file_path: &str,) -> Result<
 ///
 /// Returns an `Err` variant if the `config_file_content` is invalid or if any required fields are missing in the TOML structure.
 ///
-fn config_allowlist(config_file_content: &Value, repo_file_path: &str) -> Result<Allowlist, MyError> {
+fn config_allowlist(config_file_content: &Value) -> Result<Allowlist, MyError> {
     let mut allowlist = Allowlist {
         paths: Vec::new(),
         commits: Vec::new(),
@@ -78,13 +76,7 @@ fn config_allowlist(config_file_content: &Value, repo_file_path: &str) -> Result
     {
         for path in file_list.iter() {
             let path_str = path.as_str().ok_or(MyError::InternalError)?.to_string();
-            // If the path is a regular expression, add it directly to the allowlist
-            // Otherwise, concatenate the repository file path with the current path and add it to the allowlist
-            if is_regex(&path_str) {
-                allowlist.paths.push(path_str.clone());
-            } else {
-                allowlist.paths.push(format!("{}\\{}", repo_file_path, path_str));
-            }
+            allowlist.paths.push(path_str);
         }
     }
     
@@ -156,7 +148,7 @@ fn config_allowlist(config_file_content: &Value, repo_file_path: &str) -> Result
 ///
 /// Returns an `Err` variant if the `config_file_content` is invalid or if any required fields are missing in the TOML structure.
 ///
-fn config_ruleslist_and_keywords(config_file_content: &Value, repo_file_path: &str) -> Result<(Vec<Rule>, Vec<String>), MyError> {
+fn config_ruleslist_and_keywords(config_file_content: &Value) -> Result<(Vec<Rule>, Vec<String>), MyError> {
 
     let mut ruleslist = vec![];
     let mut keywords = vec![];
@@ -229,11 +221,7 @@ fn config_ruleslist_and_keywords(config_file_content: &Value, repo_file_path: &s
             if let Some(paths_array) = allowlist_table.get("paths").and_then(|v| v.as_array()) {
                 for path in paths_array {
                     if let Some(path_str) = path.as_str() {
-                        if is_regex(path_str) {
-                            rules_allowlist.paths.push(path_str.to_string().clone());
-                        } else {
-                            rules_allowlist.paths.push(format!("{}\\{}", repo_file_path, path_str));
-                        }
+                        rules_allowlist.paths.push(path_str.to_string());
                     }
                 }
             }
@@ -312,23 +300,18 @@ pub fn is_contains_keyword(contents: &str, keywords: &[String]) -> bool {
 ///
 /// Returns `true` if the `path` is found in the allowlist paths, otherwise `false`.
 ///
-pub fn is_path_in_allowlist(path: &Path, allowlist_paths: &[String]) -> bool {
+pub fn is_path_in_allowlist(path: &str, allowlist_paths: &[String]) -> bool {
     for allowlist_path in allowlist_paths {
         if is_regex(allowlist_path) {
             let allowlist_regex = Regex::new(allowlist_path).unwrap();
-            if allowlist_regex.is_match(&path.to_string_lossy()) {
+            if allowlist_regex.is_match(path) {
                 return true;
             }
         } else {
-            let canon_path1 = PathBuf::from(allowlist_path).canonicalize();
-            let canon_path2 = path.canonicalize();
-            match (canon_path1, canon_path2) {
-                (Ok(canon_path1), Ok(canon_path2)) => {
-                    if canon_path1 == canon_path2 {
-                        return true;
-                    }
+            for allowlist_path in allowlist_paths {
+                if allowlist_path == path {
+                    return true;
                 }
-                _ => continue,
             }
         }
     }
@@ -421,6 +404,7 @@ pub fn remove_duplicates<T: Eq + std::hash::Hash + Clone>(array1: Vec<T>, array2
     array1.into_iter().filter(|x| !set.contains(x)).collect()
 }
 
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -429,8 +413,7 @@ mod tests {
     #[test]
     fn test_load_config_file_valid_file() {
         let config_file_path = "tests/files/gitleaks.toml";
-        let repo_file_path = "/path/to/repo";
-        let result = load_config_file(config_file_path, repo_file_path);
+        let result = load_config_file(config_file_path);
 
         assert!(result.is_ok());
     }
@@ -438,8 +421,7 @@ mod tests {
     #[test]
     fn test_load_config_file_invalid_file() {
         let config_file_path = "tests/files/invalid.toml";
-        let repo_file_path = "/path/to/repo";
-        let result = load_config_file(config_file_path, repo_file_path);
+        let result = load_config_file(config_file_path);
 
         assert!(result.is_err());
     }
@@ -447,8 +429,7 @@ mod tests {
     #[test]
     fn test_load_config_file_file_not_found() {
         let config_file_path = "nonexistent_config.toml";
-        let repo_file_path = "/path/to/repo";
-        let result = load_config_file(config_file_path, repo_file_path);
+        let result = load_config_file(config_file_path);
 
         assert!(result.is_err());
     }
@@ -480,9 +461,7 @@ mod tests {
             "#,
         )
         .unwrap();
-
-        let repo_file_path = "/path/to/repo";
-        let result = config_allowlist(&config_file_content, repo_file_path);
+        let result = config_allowlist(&config_file_content);
 
         assert!(result.is_ok());
     }
@@ -504,9 +483,7 @@ mod tests {
             "#,
         )
         .unwrap();
-
-        let repo_file_path = "/path/to/repo";
-        let result = config_allowlist(&config_file_content, repo_file_path);
+        let result = config_allowlist(&config_file_content);
 
         assert!(result.is_ok());
     }
@@ -525,8 +502,7 @@ mod tests {
         )
         .unwrap();
     
-        let repo_file_path = "/path/to/repo";
-        let result = config_allowlist(&config_file_content, repo_file_path);
+        let result = config_allowlist(&config_file_content);
         let _empty_allowlist=Allowlist{
             paths: Vec::new(),
             commits: Vec::new(),
@@ -572,9 +548,7 @@ mod tests {
             "#,
         )
         .unwrap();
-
-        let repo_file_path = "/path/to/repo";
-        let result = config_ruleslist_and_keywords(&config_file_content, repo_file_path);
+        let result = config_ruleslist_and_keywords(&config_file_content);
 
         assert!(result.is_ok());
         let (ruleslist, keywords) = result.unwrap();
@@ -651,10 +625,9 @@ mod tests {
     }
 
     // test is_path_in_allowlist
-
     #[test]
     fn test_is_path_in_allowlist_regex_not_match() {
-        let path = Path::new("/path/to/file.txt");
+        let path ="/path/to/file.txt";
         let allowlist_paths = vec!["/other/.*\\.txt".to_string()];
         let result = is_path_in_allowlist(path, &allowlist_paths);
         assert_eq!(result, false);
@@ -662,7 +635,7 @@ mod tests {
 
     #[test]
     fn test_is_path_in_allowlist_exact_match() {
-        let path = Path::new("tests/files/gitleaks.toml");
+        let path = "tests/files/gitleaks.toml";
         let allowlist_paths = vec!["tests/files/gitleaks.toml".to_string()];
         let result = is_path_in_allowlist(path, &allowlist_paths);
         assert_eq!(result, true);
@@ -670,7 +643,7 @@ mod tests {
 
     #[test]
     fn test_is_path_in_allowlist_canonicalization_not_match() {
-        let path = Path::new("tests/gitleaks.toml");
+        let path ="tests/gitleaks.toml";
         let allowlist_paths = vec!["/path/to/other/file.txt".to_string()];
         let result = is_path_in_allowlist(path, &allowlist_paths);
         assert_eq!(result, false);
@@ -678,7 +651,7 @@ mod tests {
 
     #[test]
     fn test_is_path_in_allowlist_empty_allowlist() {
-        let path = Path::new("tests/gitleaks.toml");
+        let path = "tests/gitleaks.toml";
         let allowlist_paths: Vec<String> = vec![];
         let result = is_path_in_allowlist(path, &allowlist_paths);
         assert_eq!(result, false);
@@ -772,12 +745,13 @@ mod tests {
         assert_eq!(result, false);
     }
     
+    // test test_remove_duplicates
     #[test]
     fn test_remove_duplicates() {
         // Test case 1
-        let array1 = vec![1, 2, 3, 4, 5];
+        let array1 = vec![1,1, 2, 3, 4, 5];
         let array2 = vec![3, 4, 5, 6, 7];
         let result = remove_duplicates(array1, array2);
-        assert_eq!(result, vec![1, 2]);
+        assert_eq!(result, vec![1,1, 2]);
     }
 }

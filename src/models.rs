@@ -1,7 +1,7 @@
 #![warn(clippy::new_without_default)]
 use clap::Parser;
 use serde::{Deserialize, Serialize};
-
+use chrono::{DateTime, FixedOffset};
 /// Represents the configuration for sensleaks tool.
 #[derive(Parser, Debug)]
 #[command(
@@ -13,25 +13,66 @@ use serde::{Deserialize, Serialize};
 )]
 pub struct Config {
     /// Target repository.
-    #[arg(short = 'r', long)]
+    #[arg( long)]
     pub repo: String,
 
     /// Config path..
-    #[arg(short = 'c', long, default_value = "gitleaks.toml")]
+    #[arg(long, default_value = "gitleaks.toml")]
     pub config: String,
 
     /// Path to write json leaks file.
-    #[arg(short = 'o', long, default_value = "")]
+    #[arg(long, default_value = "")]
     pub report: String,
 
     /// Show verbose output from scan.
-    #[arg(short = 'v', long, default_value = "false")]
+    #[arg(short,long, default_value = "false")]
     pub verbose: bool,
 
     /// Pretty print json if leaks are present.
-    #[arg(short = 'e', long, default_value = "false")]
+    #[arg(long, default_value = "false")]
     pub pretty: bool,
+
+    /// sha of commit to scan or "latest" to scan the last commit of the repository
+    #[arg(long)]
+    pub commit: Option<String>,
+
+    /// comma separated list of a commits to scan
+    #[arg(long)]
+    pub commits: Option<String>,
+
+    /// file of new line separated list of a commits to scan
+    #[arg(long)]
+    pub commits_file: Option<String>,
+
+    /// Scan commits more recent than a specific date. Ex: '2006-01-02' or '2023-01-02T15:04:05-0700' format.
+    #[arg(long)]
+    pub commit_since: Option<String>,
+
+    /// Scan commits older than a specific date. Ex: '2006-01-02' or '2006-10-02T15:04:05-0700' format.
+    #[arg(long)]
+    pub commit_until: Option<String>,
+
+    /// Commit to start scan from
+    #[arg(long)]
+    pub commit_from: Option<String>,
+
+    /// Commit to stop scan
+    #[arg(long)]
+    pub commit_to: Option<String>,
+
+    /// Branch to scan (comming soon)
+    #[arg(long)]
+    pub branch: Option<String>,
+
+    /// run gitleaks on uncommitted code (comming soon)
+    #[arg(long,default_value = "true")]
+    pub uncommitted: bool ,
+
+    /// user to scan (comming soon)
+    #[arg(long)]
+    pub user: Option<String>,
 }
+
 
 
 /// # An array of tables that contain information that define instructions on how to detect secrets.
@@ -61,7 +102,7 @@ impl Rule {
         Rule{
             description: String::from("11"),
             id:  String::from("11"),
-            regex:  String::from("11"),
+            regex:  String::from("(?i)(?:key|api|token|secret|client|passwd|password|auth|access)"),
             entropy: Some(3.1),
             keywords: Vec::new(),
             allowlist: None
@@ -75,7 +116,7 @@ impl Default for Rule {
     }
 }
 
-/// Skip the allowlist file
+/// Skip the allowlist
 #[derive(Debug, Deserialize)]
 pub struct Allowlist {
     /// Skip the paths.
@@ -111,7 +152,7 @@ impl Default for Allowlist {
 }
 /// Represents an item in the scanned output.
 #[derive(Debug, Serialize, Deserialize)]
-pub struct OutputItem {
+pub struct Leak {
     /// The line containing the sensitive information.
     pub line: String,
 
@@ -153,4 +194,58 @@ pub struct OutputItem {
 
     /// The operation .
     pub operation: String,
+}
+
+/// The scan condition 
+#[derive(Debug)]
+pub struct Scan{
+    /// allow list
+    pub allowlist:Allowlist,
+    
+    /// the rules list
+    pub ruleslist:Vec<Rule>,
+    
+    /// the keywords list, used to check the file
+    pub keywords:Vec<String>
+}
+
+/// The commit info
+#[derive(Debug)]
+pub struct CommitInfo {
+    /// repo name
+    pub repo: String,
+
+    /// commit id 
+    pub commit: git2::Oid,
+    
+    /// author name
+    pub author: String,
+    
+    /// the email of author
+    pub email: String,
+
+    /// commit message
+    pub commit_message: String,
+
+    /// commit date
+    pub date: DateTime<FixedOffset>,
+
+    /// file
+    pub files: Vec<(String, String)>,
+
+    /// tags
+    pub tags: Vec<String>,
+
+    /// operation
+    pub operation: String,
+}
+
+/// The Results of the project
+#[derive(Debug)]
+pub struct Results {
+    /// The number of commits being scanned
+    pub commits_number: usize,
+
+    /// The leaks
+    pub outputs: Vec<Leak>,
 }
