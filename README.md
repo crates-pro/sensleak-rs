@@ -1,131 +1,187 @@
-# sensleak-rs
+# sensleak - scan git repo secrets
 
-sensleak-rs is developing a detect tool  similar to gitleaks using Rust, which will detecting hardcoded secrets like passwords, api keys, and tokens in git repos. 
+sensleak is a Rust-based tool that scans Git repositories for sensitive data, specifically targeting sensitive information such as passwords, API keys, certificates, and private keys embedded within code. 
 
 ## Background
 
 Many developers store sensitive information such as keys and certificates in their code, which poses security risks. Therefore, there are commercial services like GitGuardian scanning GitHub and GitLab, as well as open-source components like truffleHog and Gitleaks that support similar functionalities.
 
-### Requirements
+## Feature 
 
-Develop a Git repository sensitive data detection tool using the Rust programming language.
+- **Enhanced Security.** Develop the tool in Rust to ensure improved security and memory safety.
+- **Command-line Interface**. Create a user-friendly command-line tool that generates a comprehensive test report.
+- **REST API with Access Control**. Enable the tool to run as a service and provide access control through a REST API. Utilize Swagger to generate API documentation.
+- **Concurrent Scanning**. Utilize a thread pool to control concurrent scanning of secrets, thereby improving overall efficiency.
+- **Batch Processing**. Implement batch processing of files to further optimize the scanning process and enhance efficiency.
 
-1. Develop in Rust for improved security.
-2. Command-line tool that outputs a test report.
-3. Support running as a service and provide access control through a REST API.
+## Technology
 
-### Environment
-
-- Runs on X86_64 and ARM64 architectures.
-- Uses Rust Edition 2021.
+- Development Language: Rust
+- Command-line Interaction: [clap.rs](https://github.com/clap-rs/clap)
+- Git Repository Operations: [git2](https://github.com/rust-lang/git2-rs)
+- Web Framework: [axum](https://github.com/tokio-rs/axum)
+- Auto-generated OpenAPI Documentation: [utoipa](https://github.com/juhaku/utoipa)
 
 ## Usage
 
-Here are a few examples of how to use the tool in different scenarios:
+### CLI Usage
 
-- Running the tool in the command-line interface (CLI) to perform sensitive data checks.
+Running the tool in the command-line interface (CLI) to perform sensitive data checks.
 
-**Note: This project is currently under development. The following features describe sensitive information search within a local folder.**
+```
+cargo run --bin scan -- -help
+```
 
 ```shell
-sensleaks-rs
-
-Usage: sensleak.exe [OPTIONS] --repo <REPO>
+Usage: scan.exe [OPTIONS] --repo <REPO>
 
 Options:
-      --repo <REPO>                  Target repository
-      --config <CONFIG>              Config path.. [default: gitleaks.toml]
-      --report <REPORT>              Path to write json leaks file [default: ]
-  -v, --verbose                      Show verbose output from scan
-      --pretty                       Pretty print json if leaks are present
-      --commit <COMMIT>              sha of commit to scan or "latest" to scan the last commit of the repository
-      --commits <COMMITS>            comma separated list of a commits to scan
-      --commits-file <COMMITS_FILE>  file of new line separated list of a commits to scan
-      --commit-since <COMMIT_SINCE>  Scan commits more recent than a specific date. Ex: '2006-01-02' or '2023-01-02T15:04:05-0700' format
-      --commit-until <COMMIT_UNTIL>  Scan commits older than a specific date. Ex: '2006-01-02' or '2006-10-02T15:04:05-0700' format
-      --commit-from <COMMIT_FROM>    Commit to start scan from
-      --commit-to <COMMIT_TO>        Commit to stop scan
-      --branch <BRANCH>              Branch to scan (comming soon)
-      --uncommitted                  run gitleaks on uncommitted code (comming soon)
-      --user <USER>                  user to scan (comming soon)
-  -h, --help                         Print help (see more with '--help')
-  -V, --version                      Print version
+      --repo <REPO>                    Target repository
+      --config <CONFIG>                Config path [default: gitleaks.toml]
+      --threads <THREADS>              Maximum number of threads sensleak spawns [default: 10]
+      --chunk <BATCH_SIZE>             The number of git files processed in each batch [default: 10]
+      --report <REPORT>                Path to write json leaks file
+      --report-format <REPORT_FORMAT>  json, csv, sarif [default: json]
+  -v, --verbose                        Show verbose output from scan
+      --pretty                         Pretty print json if leaks are present
+      --commit <COMMIT>                sha of commit to scan or "latest" to scan the last commit of the repository
+      --commits <COMMITS>              comma separated list of a commits to scan
+      --commits-file <COMMITS_FILE>    file of new line separated list of a commits to scan
+      --commit-since <COMMIT_SINCE>    Scan commits more recent than a specific date. Ex: '2006-01-02' or '2023-01-02T15:04:05-0700' format
+      --commit-until <COMMIT_UNTIL>    Scan commits older than a specific date. Ex: '2006-01-02' or '2006-10-02T15:04:05-0700' format
+      --commit-from <COMMIT_FROM>      Commit to start scan from
+      --commit-to <COMMIT_TO>          Commit to stop scan
+      --branch <BRANCH>                Branch to scan
+      --uncommitted                    Run sensleak on uncommitted code
+      --user <USER>                    Set user to scan [default: ]
+      --repo-config                    Load config from target repo. Config file must be ".gitleaks.toml" or "gitleaks.toml"
+      --debug                          log debug messages
+      --disk <DISK>                    Clones repo(s) to disk
+  -h, --help                           Print help (see more with '--help')
+  -V, --version                        Print version
 
-
-
+run 'cargo run --bin api' to get REST API.
 Repository: https://github.com/open-rust-initiative/sensleak-rs
+
 ```
 
-Examples: (Test repo: https://github.com/sonichen/TestGitOperation)
+Example: 
+
+Test https://github.com/sonichen/Expiry-Reminder-Assistant.git
 
 ```shell
-sensleak --repo="D:/Workplace/Git/TestGitOperation" --commit="8bdca802af0514ce29947e20c6be1719974ad866" -v --pretty
+$ cargo run --bin scan -- --repo="D:/Workplace/Java/project/ExpiryReminderAssistant" -v --pretty
 ```
 
-Output:
-
 ```shell
-[INFO][2023-05-26 11:51:04] Open repo ...
+[INFO][2023-06-05 09:59:59] Clone repo ...
 [
     Leak {
-        line: "twilio_api_key = SK12345678901234567890123456789012",
-        line_number: 6,
-        secret: "api_key = SK12345678901234567890123456789012",
-        entropy: "3.5",
-        commit: "8bdca802af0514ce29947e20c6be1719974ad866",
-        repo: "TestGitOperation",
+        line: "        String secret = \"1708b0314f18f420d3fe8128652af43c\"; //自己小程序的SECRET",
+        line_number: 67,
+        offender: "secret = \"1708b0314f18f420d3fe8128652af43c\"",
+        commit: "410eb5a84408d3e63edb4d0975e5516e56f6ea6a",
+        repo: "ExpiryReminderAssistant",
         rule: "Generic API Key",
-        commit_message: "test\n",
+        commit_message: "submit code\n",
         author: "sonichen",
         email: "1606673007@qq.com",
-        file: "/src/key.java",
-        date: "2023-05-23 23:55:12 -08:00",
-        tags: "",
-        operation: "addition",
+        file: "/backend/src/main/java/com/cyj/controller/login/WXLoginController.java",
+        date: "2023-05-31 18:09:42 -08:00",
     },
-   ...
     Leak {
-        line: "twilio_api_key = SK12345678901234567890123456789012",
-        line_number: 2,
-        secret: "SK12345678901234567890123456789012",
-        entropy: "",
-        commit: "8bdca802af0514ce29947e20c6be1719974ad866",
-        repo: "TestGitOperation",
-        rule: "Twilio API Key",
-        commit_message: "test\n",
+        line: "        businessException.apiResponse = apiResponse;",
+        line_number: 64,
+        offender: "apiResponse = apiResponse;",
+        commit: "410eb5a84408d3e63edb4d0975e5516e56f6ea6a",
+        repo: "ExpiryReminderAssistant",
+        rule: "Generic API Key",
+        commit_message: "submit code\n",
         author: "sonichen",
         email: "1606673007@qq.com",
-        file: "/src/mykey.java",
-        date: "2023-05-23 23:55:12 -08:00",
-        tags: "",
-        operation: "addition",
+        file: "/backend/src/main/java/com/cyj/exception/BusinessException.java",
+        date: "2023-05-31 18:09:42 -08:00",
+    },
+    Leak {
+        line: "//    app_secret:bm92ZWk2WFdoR3RkV3ZiUk5SUnVXUT09",
+        line_number: 5,
+        offender: "secret:bm92ZWk2WFdoR3RkV3ZiUk5SUnVXUT09",
+        commit: "410eb5a84408d3e63edb4d0975e5516e56f6ea6a",
+        repo: "ExpiryReminderAssistant",
+        rule: "Generic API Key",
+        commit_message: "submit code\n",
+        author: "sonichen",
+        email: "1606673007@qq.com",
+        file: "/backend/src/main/java/com/cyj/utils/constants/DevelopConstants.java",
+        date: "2023-05-31 18:09:42 -08:00",
+    },
+    Leak {
+        line: "    public static final String  APP_SECRET=\"bm92ZWk2WFdoR3RkV3ZiUk5SUnVXUT09\";",
+        line_number: 7,
+        offender: "SECRET=\"bm92ZWk2WFdoR3RkV3ZiUk5SUnVXUT09\"",
+        commit: "410eb5a84408d3e63edb4d0975e5516e56f6ea6a",
+        repo: "ExpiryReminderAssistant",
+        rule: "Generic API Key",
+        commit_message: "submit code\n",
+        author: "sonichen",
+        email: "1606673007@qq.com",
+        file: "/backend/src/main/java/com/cyj/utils/constants/DevelopConstants.java",
+        date: "2023-05-31 18:09:42 -08:00",
+    },
+    Leak {
+        line: "//    public static final String APPSECRET = \"94f391d306875101822ffa1b2c3cff09\";",
+        line_number: 17,
+        offender: "SECRET = \"94f391d306875101822ffa1b2c3cff09\"",
+        commit: "410eb5a84408d3e63edb4d0975e5516e56f6ea6a",
+        repo: "ExpiryReminderAssistant",
+        rule: "Generic API Key",
+        commit_message: "submit code\n",
+        author: "sonichen",
+        email: "1606673007@qq.com",
+        file: "/backend/src/main/java/com/cyj/utils/secret/AuthUtil.java",
+        date: "2023-05-31 18:09:42 -08:00",
+    },
+    Leak {
+        line: "  secret: \"c6e1180dda3eaca49f3d7ed912718e4d\"   #小程序密钥",
+        line_number: 36,
+        offender: "secret: \"c6e1180dda3eaca49f3d7ed912718e4d\"",
+        commit: "410eb5a84408d3e63edb4d0975e5516e56f6ea6a",
+        repo: "ExpiryReminderAssistant",
+        rule: "Generic API Key",
+        commit_message: "submit code\n",
+        author: "sonichen",
+        email: "1606673007@qq.com",
+        file: "/backend/src/main/resources/application.yaml",
+        date: "2023-05-31 18:09:42 -08:00",
+    },
+    Leak {
+        line: "  secret: \"c6e1180dda3eaca49f3d7ed912718e4d\"   #小程序密钥",
+        line_number: 36,
+        offender: "secret: \"c6e1180dda3eaca49f3d7ed912718e4d\"",
+        commit: "410eb5a84408d3e63edb4d0975e5516e56f6ea6a",
+        repo: "ExpiryReminderAssistant",
+        rule: "Generic API Key",
+        commit_message: "submit code\n",
+        author: "sonichen",
+        email: "1606673007@qq.com",
+        file: "/backend/target/classes/application.yaml",
+        date: "2023-05-31 18:09:42 -08:00",
     },
 ]
-[WARN][2023-05-26 11:51:05]10 leaks detected. 1 commits scanned in 1.7318395s
-
+[WARN][2023-06-05 10:00:02]7 leaks detected. 1 commits scanned in 1.2538834s
 ```
 
+### API Document
 
-
-More examples:
+Run the following code to read the project document.
 
 ```shell
-cargo run -- --repo="D:/Workplace/Git/TestGitOperation" --commit="8bdca802af0514ce29947e20c6be1719974ad866" -v --pretty
-cargo run -- --repo="D:/Workplace/Git/TestGitOperation" --commits="4362fc4df48df74a46b56368d7fff1b02d01be72,8bdca802af0514ce29947e20c6be1719974ad866" -v --pretty
-cargo run -- --repo="D:/Workplace/Git/TestGitOperation" --commits-file="tests/files/commits.txt" -v --pretty
-cargo run -- --repo="D:/Workplace/Git/TestGitOperation" --commit-since="2023-05-20" --commit-until="2023-05-26"   -v --pretty
-cargo run -- --repo="D:/Workplace/Git/TestGitOperation" --commit-to="4362fc4df48df74a46b56368d7fff1b02d01be72" --commit-from="8bdca802af0514ce29947e20c6be1719974ad866"  -v --pretty
+cargo run --bin api
 ```
 
+The API document is located at http://localhost:7000/swagger-ui/#/
 
-
-- Accessing the tool's functionality through the REST API for access control and data scanning. (Coming soon...)
-
-## Configuration
-
-Use the [gitleaks configuration](https://github.com/gitleaks/gitleaks#configuration) in this project.
-
-## Document
+### Project Document
 
 Run the following code to read the project document.
 
@@ -133,9 +189,126 @@ Run the following code to read the project document.
 cargo doc --document-private-items --open
 ```
 
+### Configuration
+
+Use the [gitleaks configuration](https://github.com/gitleaks/gitleaks#configuration) in this project. The difference is that in this project, the paths need to start with a "/".
+
+```toml
+# Title for the gitleaks configuration file.
+title = "Gitleaks title"
+
+# Extend the base (this) configuration. When you extend a configuration
+# the base rules take precedence over the extended rules. I.e., if there are
+# duplicate rules in both the base configuration and the extended configuration
+# the base rules will override the extended rules.
+# Another thing to know with extending configurations is you can chain together
+# multiple configuration files to a depth of 2. Allowlist arrays are appended
+# and can contain duplicates.
+# useDefault and path can NOT be used at the same time. Choose one.
+[extend]
+# useDefault will extend the base configuration with the default gitleaks config:
+# https://github.com/zricethezav/gitleaks/blob/master/config/gitleaks.toml
+useDefault = true
+# or you can supply a path to a configuration. Path is relative to where gitleaks
+# was invoked, not the location of the base config.
+path = "common_config.toml"
+
+# An array of tables that contain information that define instructions
+# on how to detect secrets
+[[rules]]
+
+# Unique identifier for this rule
+id = "awesome-rule-1"
+
+# Short human readable description of the rule.
+description = "awesome rule 1"
+
+# Golang regular expression used to detect secrets. Note Golang's regex engine
+# does not support lookaheads.
+regex = '''one-go-style-regex-for-this-rule'''
+
+# Golang regular expression used to match paths. This can be used as a standalone rule or it can be used
+# in conjunction with a valid `regex` entry.
+path = '''a-file-path-regex'''
+
+# Array of strings used for metadata and reporting purposes.
+tags = ["tag","another tag"]
+
+# Int used to extract secret from regex match and used as the group that will have
+# its entropy checked if `entropy` is set.
+secretGroup = 3
+
+# Float representing the minimum shannon entropy a regex group must have to be considered a secret.
+entropy = 3.5
+
+# Keywords are used for pre-regex check filtering. Rules that contain
+# keywords will perform a quick string compare check to make sure the
+# keyword(s) are in the content being scanned. Ideally these values should
+# either be part of the idenitifer or unique strings specific to the rule's regex
+# (introduced in v8.6.0)
+keywords = [
+  "auth",
+  "password",
+  "token",
+]
+
+# You can include an allowlist table for a single rule to reduce false positives or ignore commits
+# with known/rotated secrets
+[rules.allowlist]
+description = "ignore commit A"
+commits = [ "commit-A", "commit-B"]
+paths = [
+  '''\go\.mod''',
+  '''\go\.sum'''
+]
+# note: (rule) regexTarget defaults to check the _Secret_ in the finding.
+# if regexTarget is not specified then _Secret_ will be used.
+# Acceptable values for regexTarget are "match" and "line"
+regexTarget = "match"
+regexes = [
+  '''process''',
+  '''getenv''',
+]
+# note: stopwords targets the extracted secret, not the entire regex match
+# like 'regexes' does. (stopwords introduced in 8.8.0)
+stopwords = [
+  '''client''',
+  '''endpoint''',
+]
+
+
+# This is a global allowlist which has a higher order of precedence than rule-specific allowlists.
+# If a commit listed in the `commits` field below is encountered then that commit will be skipped and no
+# secrets will be detected for said commit. The same logic applies for regexes and paths.
+[allowlist]
+description = "global allow list"
+commits = [ "commit-A", "commit-B", "commit-C"]
+paths = [
+  '''gitleaks\.toml''',
+  '''(.*?)(jpg|gif|doc)'''
+]
+
+# note: (global) regexTarget defaults to check the _Secret_ in the finding.
+# if regexTarget is not specified then _Secret_ will be used.
+# Acceptable values for regexTarget are "match" and "line"
+regexTarget = "match"
+
+regexes = [
+  '''219-09-9999''',
+  '''078-05-1120''',
+  '''(9[0-9]{2}|666)-\d{2}-\d{4}''',
+]
+# note: stopwords targets the extracted secret, not the entire regex match
+# like 'regexes' does. (stopwords introduced in 8.8.0)
+stopwords = [
+  '''client''',
+  '''endpoint''',
+]
+```
+
 ## Contributing
 
-The  project relies on community contributions and aims to simplify getting  started. To use sensleak-rs, clone the repo, install dependencies, and run  sensleak-rs. Pick an issue, make changes, and submit a pull request for community review.
+The  project relies on community contributions and aims to simplify getting  started. To use sensleak, clone the repo, install dependencies, and run  sensleak. Pick an issue, make changes, and submit a pull request for community review.
 
 To contribute to rkos, you should:
 

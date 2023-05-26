@@ -1,14 +1,92 @@
-mod error;
-mod models;
-mod file_utils;
-mod git_service;
-mod git_util;
+mod errors;
+ 
+mod utils {
+    pub mod detect_utils;
+    pub mod git_util;
 
-pub mod detect_service;
+}
+pub mod entity{
+    pub mod models;
+}
+pub mod service{
+    pub mod detect_service;
+    pub mod git_service;
+}
+ 
+ pub use entity::models;
+ 
 
-pub use models::*;
-pub use file_utils::*;
-pub use detect_service::*;
-pub use error::*;
-pub use  git_service::*;
+pub use errors::*;
+ 
+ 
+pub use utils::detect_utils;
+pub use utils::git_util;
+ 
 pub use git_util::*;
+pub use models::*;
+
+
+
+
+use std::{
+    net::{Ipv4Addr, SocketAddr},
+    
+};
+
+use axum::{routing, Router, Server};
+use hyper::Error;
+use utoipa::{
+     OpenApi,
+};
+use utoipa_swagger_ui::SwaggerUi;
+
+ 
+mod routes{
+    pub mod scan;
+    pub mod rules;
+}
+pub use routes::scan::*;
+pub use routes::rules::*;
+
+ use crate::routes::*;
+
+ 
+ 
+
+pub async fn start() -> Result<(), Error> {
+    #[derive(OpenApi)]
+    #[openapi(
+        paths(
+            scan::scan_repo,
+            rules::get_all,
+            rules::add_rules,
+            rules::delete_rules_by_id,
+            rules::update_rules
+        ),
+        components(
+            schemas(ConfigDto,ScanResponse,RulesDto,JsonResponse,Rule,Allowlist)
+        ),
+     
+        tags(
+            (name = "scan", description = "Scan Git repositories API"),
+            (name = "rules", description = "Rules management API"),
+
+        )
+    )]
+    struct ApiDoc;
+
+ 
+    let app = Router::new()
+        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
+        .route("/scan", routing::post(scan_repo))
+        .route("/rules/get_all", routing::post(get_all))
+        .route("/rules/add_rules", routing::post(add_rules))
+        .route("/rules/delete_rules_by_id", routing::post(delete_rules_by_id))
+        .route("/rules/update", routing::post(update_rules));
+
+
+    let address = SocketAddr::from((Ipv4Addr::UNSPECIFIED, 7000));
+    Server::bind(&address).serve(app.into_make_service()).await
+}
+
+ 
