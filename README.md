@@ -25,96 +25,97 @@ Here are a few examples of how to use the tool in different scenarios:
 
 - Running the tool in the command-line interface (CLI) to perform sensitive data checks.
 
-**Note: This project is currently under development. The following features describe sensitive information search within a local folder.**
+**Note: This project is currently under development. **
 
 ```shell
-sensleaks-rs
-
 Usage: sensleak.exe [OPTIONS] --repo <REPO>
 
 Options:
-      --repo <REPO>                  Target repository
-      --config <CONFIG>              Config path.. [default: gitleaks.toml]
-      --report <REPORT>              Path to write json leaks file [default: ]
-  -v, --verbose                      Show verbose output from scan
-      --pretty                       Pretty print json if leaks are present
-      --commit <COMMIT>              sha of commit to scan or "latest" to scan the last commit of the repository
-      --commits <COMMITS>            comma separated list of a commits to scan
-      --commits-file <COMMITS_FILE>  file of new line separated list of a commits to scan
-      --commit-since <COMMIT_SINCE>  Scan commits more recent than a specific date. Ex: '2006-01-02' or '2023-01-02T15:04:05-0700' format
-      --commit-until <COMMIT_UNTIL>  Scan commits older than a specific date. Ex: '2006-01-02' or '2006-10-02T15:04:05-0700' format
-      --commit-from <COMMIT_FROM>    Commit to start scan from
-      --commit-to <COMMIT_TO>        Commit to stop scan
-      --branch <BRANCH>              Branch to scan (comming soon)
-      --uncommitted                  run gitleaks on uncommitted code (comming soon)
-      --user <USER>                  user to scan (comming soon)
-  -h, --help                         Print help (see more with '--help')
-  -V, --version                      Print version
-
-
+      --repo <REPO>                    Target repository
+      --config <CONFIG>                Config path [default: gitleaks.toml]
+      --report <REPORT>                Path to write json leaks file [default: ]
+      --report-format <REPORT_FORMAT>  json, csv, sarif [default: json]
+  -v, --verbose                        Show verbose output from scan
+      --pretty                         Pretty print json if leaks are present
+      --commit <COMMIT>                sha of commit to scan or "latest" to scan the last commit of the repository
+      --commits <COMMITS>              comma separated list of a commits to scan
+      --commits-file <COMMITS_FILE>    file of new line separated list of a commits to scan
+      --commit-since <COMMIT_SINCE>    Scan commits more recent than a specific date. Ex: '2006-01-02' or '2023-01-02T15:04:05-0700' format
+      --commit-until <COMMIT_UNTIL>    Scan commits older than a specific date. Ex: '2006-01-02' or '2006-10-02T15:04:05-0700' format
+      --commit-from <COMMIT_FROM>      Commit to start scan from
+      --commit-to <COMMIT_TO>          Commit to stop scan
+      --branch <BRANCH>                Branch to scan
+      --uncommitted <UNCOMMITTED>      Run sensleak on uncommitted code [possible values: true, false]
+      --user <USER>                    Set user to scan [default: ]
+      --repo-config                    Load config from target repo. Config file must be ".gitleaks.toml" or "gitleaks.toml"
+      --debug                          log debug messages
+      --disk <DISK>                    Clones repo(s) to disk
+  -h, --help                           Print help (see more with '--help')
+  -V, --version                        Print version
 
 Repository: https://github.com/open-rust-initiative/sensleak-rs
 ```
 
-Examples: (Test repo: https://github.com/sonichen/TestGitOperation)
+Examples: 
 
 ```shell
-sensleak --repo="D:/Workplace/Git/TestGitOperation" --commit="8bdca802af0514ce29947e20c6be1719974ad866" -v --pretty
+sensleak --repo="https://github.com/sonichen/TestGitOperation.git" -v --pretty --commit="140cef166cd8ba98201d9cad80289a75cd590cec"
 ```
 
 Output:
 
 ```shell
-[INFO][2023-05-26 11:51:04] Open repo ...
+[INFO][2023-06-01 09:16:02] Clone repo ...
 [
     Leak {
         line: "twilio_api_key = SK12345678901234567890123456789012",
         line_number: 6,
-        secret: "api_key = SK12345678901234567890123456789012",
-        entropy: "3.5",
-        commit: "8bdca802af0514ce29947e20c6be1719974ad866",
+        offender: "api_key = SK12345678901234567890123456789012",
+        commit: "140cef166cd8ba98201d9cad80289a75cd590cec",
         repo: "TestGitOperation",
         rule: "Generic API Key",
-        commit_message: "test\n",
+        commit_message: "Merge pull request #1 from sonichen/secret\n\nSecret",
         author: "sonichen",
-        email: "1606673007@qq.com",
+        email: "57282299+sonichen@users.noreply.github.com",
         file: "/src/key.java",
-        date: "2023-05-23 23:55:12 -08:00",
+        date: "2023-05-27 04:28:55 -08:00",
+        tags: "",
+        operation: "addition",
+    },
+    Leak {
+        line: "Vault Service Token = hvs.abcdefghijklmn1234567890opqrstuvwxyz_ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+        line_number: 8,
+        offender: "Token = hvs.abcdefghijklmn1234567890opqrstuvwxyz_ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+        commit: "140cef166cd8ba98201d9cad80289a75cd590cec",
+        repo: "TestGitOperation",
+        rule: "Generic API Key",
+        commit_message: "Merge pull request #1 from sonichen/secret\n\nSecret",
+        author: "sonichen",
+        email: "57282299+sonichen@users.noreply.github.com",
+        file: "/src/key.java",
+        date: "2023-05-27 04:28:55 -08:00",
+        tags: "",
+        operation: "addition",
+    },
+    Leak {
+        line: " 网址 = https://hooks.slack.com/workflows/B01234567/T01234567/abcdefghijklmnopqrstuvwx",
+        line_number: 7,
+        offender: "https://hooks.slack.com/workflows/B01234567/T01234567/abcdefghijklmnopqrstuvwx",
+        commit: "140cef166cd8ba98201d9cad80289a75cd590cec",
+        repo: "TestGitOperation",
+        rule: "Slack Webhook",
+        commit_message: "Merge pull request #1 from sonichen/secret\n\nSecret",
+        author: "sonichen",
+        email: "57282299+sonichen@users.noreply.github.com",
+        file: "/src/key.java",
+        date: "2023-05-27 04:28:55 -08:00",
         tags: "",
         operation: "addition",
     },
    ...
-    Leak {
-        line: "twilio_api_key = SK12345678901234567890123456789012",
-        line_number: 2,
-        secret: "SK12345678901234567890123456789012",
-        entropy: "",
-        commit: "8bdca802af0514ce29947e20c6be1719974ad866",
-        repo: "TestGitOperation",
-        rule: "Twilio API Key",
-        commit_message: "test\n",
-        author: "sonichen",
-        email: "1606673007@qq.com",
-        file: "/src/mykey.java",
-        date: "2023-05-23 23:55:12 -08:00",
-        tags: "",
-        operation: "addition",
-    },
 ]
-[WARN][2023-05-26 11:51:05]10 leaks detected. 1 commits scanned in 1.7318395s
+[WARN][2023-06-01 09:16:03]10 leaks detected. 1 commits scanned in 1.6758691s
 
-```
-
-
-
-More examples:
-
-```shell
-cargo run -- --repo="D:/Workplace/Git/TestGitOperation" --commit="8bdca802af0514ce29947e20c6be1719974ad866" -v --pretty
-cargo run -- --repo="D:/Workplace/Git/TestGitOperation" --commits="4362fc4df48df74a46b56368d7fff1b02d01be72,8bdca802af0514ce29947e20c6be1719974ad866" -v --pretty
-cargo run -- --repo="D:/Workplace/Git/TestGitOperation" --commits-file="tests/files/commits.txt" -v --pretty
-cargo run -- --repo="D:/Workplace/Git/TestGitOperation" --commit-since="2023-05-20" --commit-until="2023-05-26"   -v --pretty
-cargo run -- --repo="D:/Workplace/Git/TestGitOperation" --commit-to="4362fc4df48df74a46b56368d7fff1b02d01be72" --commit-from="8bdca802af0514ce29947e20c6be1719974ad866"  -v --pretty
 ```
 
 

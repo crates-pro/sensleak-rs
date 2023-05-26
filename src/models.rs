@@ -1,7 +1,8 @@
 #![warn(clippy::new_without_default)]
+use chrono::{DateTime, FixedOffset};
 use clap::Parser;
 use serde::{Deserialize, Serialize};
-use chrono::{DateTime, FixedOffset};
+
 /// Represents the configuration for sensleaks tool.
 #[derive(Parser, Debug)]
 #[command(
@@ -13,10 +14,10 @@ use chrono::{DateTime, FixedOffset};
 )]
 pub struct Config {
     /// Target repository.
-    #[arg( long)]
+    #[arg(long)]
     pub repo: String,
 
-    /// Config path..
+    /// Config path
     #[arg(long, default_value = "gitleaks.toml")]
     pub config: String,
 
@@ -24,8 +25,12 @@ pub struct Config {
     #[arg(long, default_value = "")]
     pub report: String,
 
+    /// json, csv, sarif
+    #[arg(long, default_value = "json")]
+    pub report_format: String,
+
     /// Show verbose output from scan.
-    #[arg(short,long, default_value = "false")]
+    #[arg(short, long, default_value = "false")]
     pub verbose: bool,
 
     /// Pretty print json if leaks are present.
@@ -60,20 +65,31 @@ pub struct Config {
     #[arg(long)]
     pub commit_to: Option<String>,
 
-    /// Branch to scan (comming soon)
+    /// Branch to scan
     #[arg(long)]
     pub branch: Option<String>,
 
-    /// run gitleaks on uncommitted code (comming soon)
-    #[arg(long,default_value = "true")]
-    pub uncommitted: bool ,
-
-    /// user to scan (comming soon)
+    /// Run sensleak on uncommitted code
     #[arg(long)]
+    // pub uncommitted: bool ,
+    pub uncommitted: Option<bool>,
+
+    /// Set user to scan
+    #[arg(long, default_value = "")]
     pub user: Option<String>,
+
+    /// Load config from target repo. Config file must be ".gitleaks.toml" or "gitleaks.toml"
+    #[arg(long)]
+    pub repo_config: bool,
+
+    /// log debug messages.
+    #[arg(long, default_value = "false")]
+    pub debug: bool,
+
+    /// Clones repo(s) to disk.
+    #[arg(long)]
+    pub disk: Option<String>,
 }
-
-
 
 /// # An array of tables that contain information that define instructions on how to detect secrets.
 #[derive(Debug)]
@@ -88,7 +104,7 @@ pub struct Rule {
     pub regex: String,
 
     /// Float representing the minimum shannon entropy a regex group must have to be considered a secret.
-    pub entropy: Option<f64>,
+    // pub entropy: Option<f64>,
 
     /// Keywords are used for pre-regex check filtering. Rules that contain keywords will perform a quick string compare check to make sure the keyword(s) are in the content being scanned. Ideally these values should either be part of the idenitifer or unique strings specific to the rule's regex
     pub keywords: Vec<String>,
@@ -98,14 +114,14 @@ pub struct Rule {
 }
 
 impl Rule {
-    pub fn new() -> Rule{
-        Rule{
+    pub fn new() -> Rule {
+        Rule {
             description: String::from("11"),
-            id:  String::from("11"),
-            regex:  String::from("(?i)(?:key|api|token|secret|client|passwd|password|auth|access)"),
-            entropy: Some(3.1),
+            id: String::from("11"),
+            regex: String::from("(?i)(?:key|api|token|secret|client|passwd|password|auth|access)"),
+            // entropy: Some(3.1),
             keywords: Vec::new(),
-            allowlist: None
+            allowlist: None,
         }
     }
 }
@@ -160,10 +176,7 @@ pub struct Leak {
     pub line_number: u32,
 
     /// The sensitive information detected.
-    pub secret: String,
-
-    /// The entropy of the sensitive information.
-    pub entropy: String,
+    pub offender: String,
 
     /// The commit info.
     pub commit: String,
@@ -196,17 +209,32 @@ pub struct Leak {
     pub operation: String,
 }
 
-/// The scan condition 
+/// The scan condition
 #[derive(Debug)]
-pub struct Scan{
+pub struct Scan {
     /// allow list
-    pub allowlist:Allowlist,
-    
+    pub allowlist: Allowlist,
+
     /// the rules list
-    pub ruleslist:Vec<Rule>,
-    
+    pub ruleslist: Vec<Rule>,
+
     /// the keywords list, used to check the file
-    pub keywords:Vec<String>
+    pub keywords: Vec<String>,
+}
+impl Scan {
+    pub fn new() -> Self {
+        Scan {
+            allowlist: Allowlist::new(),
+            ruleslist: Vec::new(),
+            keywords:Vec::new(),
+        }
+    }
+}
+
+impl Default for Scan {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// The commit info
@@ -215,12 +243,12 @@ pub struct CommitInfo {
     /// repo name
     pub repo: String,
 
-    /// commit id 
+    /// commit id
     pub commit: git2::Oid,
-    
+
     /// author name
     pub author: String,
-    
+
     /// the email of author
     pub email: String,
 
@@ -248,4 +276,53 @@ pub struct Results {
 
     /// The leaks
     pub outputs: Vec<Leak>,
+}
+impl Results {
+    pub fn new() -> Self {
+        Results {
+            commits_number: 0,
+            outputs: Vec::new(),
+        }
+    }
+}
+impl Default for Results {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+/// CSV Struct
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CsvResult {
+    /// The line containing the sensitive information.
+    pub line: String,
+
+    /// The line number where the sensitive information is found.
+    pub line_number: u32,
+
+    /// The sensitive information detected.
+    pub offender: String,
+
+    /// The commit info.
+    pub commit: String,
+
+    /// The repository where the sensitive information is found.
+    pub repo: String,
+
+    /// The rule used to detect the sensitive information.
+    pub rule: String,
+
+    /// The commit message associated with the sensitive information.
+    pub commit_message: String,
+
+    /// The author of the commit.
+    pub author: String,
+
+    /// The email of the commit author.
+    pub email: String,
+
+    /// The file path where the sensitive information is found.
+    pub file: String,
+
+    /// The date of the commit.
+    pub date: String,
 }
