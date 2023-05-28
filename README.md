@@ -33,62 +33,88 @@ sensleaks-rs
 Usage: sensleak.exe [OPTIONS] --repo <REPO>
 
 Options:
-  -r, --repo <REPO>      Target repository
-  -c, --config <CONFIG>  Config path.. [default: gitleaks.toml]
-  -o, --report <REPORT>  Path to write json leaks file [default: ]
-  -v, --verbose          Show verbose output from scan
-  -e, --pretty           Pretty print json if leaks are present
-  -h, --help             Print help (see more with '--help')
-  -V, --version          Print version
+      --repo <REPO>                  Target repository
+      --config <CONFIG>              Config path.. [default: gitleaks.toml]
+      --report <REPORT>              Path to write json leaks file [default: ]
+  -v, --verbose                      Show verbose output from scan
+      --pretty                       Pretty print json if leaks are present
+      --commit <COMMIT>              sha of commit to scan or "latest" to scan the last commit of the repository
+      --commits <COMMITS>            comma separated list of a commits to scan
+      --commits-file <COMMITS_FILE>  file of new line separated list of a commits to scan
+      --commit-since <COMMIT_SINCE>  Scan commits more recent than a specific date. Ex: '2006-01-02' or '2023-01-02T15:04:05-0700' format
+      --commit-until <COMMIT_UNTIL>  Scan commits older than a specific date. Ex: '2006-01-02' or '2006-10-02T15:04:05-0700' format
+      --commit-from <COMMIT_FROM>    Commit to start scan from
+      --commit-to <COMMIT_TO>        Commit to stop scan
+      --branch <BRANCH>              Branch to scan (comming soon)
+      --uncommitted                  run gitleaks on uncommitted code (comming soon)
+      --user <USER>                  user to scan (comming soon)
+  -h, --help                         Print help (see more with '--help')
+  -V, --version                      Print version
+
+
 
 Repository: https://github.com/open-rust-initiative/sensleak-rs
 ```
 
-Examples: (test the file in src\tests\files\test)
+Examples: (Test repo: https://github.com/sonichen/TestGitOperation)
 
 ```shell
-sensleak -r="tests\files\test" -v -e
+sensleak --repo="D:/Workplace/Git/TestGitOperation" --commit="8bdca802af0514ce29947e20c6be1719974ad866" -v --pretty
 ```
 
 Output:
 
 ```shell
+[INFO][2023-05-26 11:51:04] Open repo ...
 [
-    OutputItem {
-        line: "token = sk_test_abcd1234567890efghijklmno",
-        line_number: 5,
-        secret: "sk_test_abcd1234567890efghijklmno",
-        entropy: "",
-        commit: "",
-        repo: "",
-        rule: "Stripe Access Token",
-        commit_message: "",
-        author: "",
-        email: "",
-        file: "tests\\files\\test\\file2.txt",
-        date: "",
-        tags: "",
-        operation: "",
-    },
-    OutputItem {
+    Leak {
         line: "twilio_api_key = SK12345678901234567890123456789012",
         line_number: 6,
+        secret: "api_key = SK12345678901234567890123456789012",
+        entropy: "3.5",
+        commit: "8bdca802af0514ce29947e20c6be1719974ad866",
+        repo: "TestGitOperation",
+        rule: "Generic API Key",
+        commit_message: "test\n",
+        author: "sonichen",
+        email: "1606673007@qq.com",
+        file: "/src/key.java",
+        date: "2023-05-23 23:55:12 -08:00",
+        tags: "",
+        operation: "addition",
+    },
+   ...
+    Leak {
+        line: "twilio_api_key = SK12345678901234567890123456789012",
+        line_number: 2,
         secret: "SK12345678901234567890123456789012",
         entropy: "",
-        commit: "",
-        repo: "",
+        commit: "8bdca802af0514ce29947e20c6be1719974ad866",
+        repo: "TestGitOperation",
         rule: "Twilio API Key",
-        commit_message: "",
-        author: "",
-        email: "",
-        file: "tests\\files\\test\\file2.txt",
-        date: "",
+        commit_message: "test\n",
+        author: "sonichen",
+        email: "1606673007@qq.com",
+        file: "/src/mykey.java",
+        date: "2023-05-23 23:55:12 -08:00",
         tags: "",
-        operation: "",
+        operation: "addition",
     },
-    ....
 ]
-WARN:[2023-05-17 09:45:07]10 leaks detected. XXX commits scanned in 66.6222ms
+[WARN][2023-05-26 11:51:05]10 leaks detected. 1 commits scanned in 1.7318395s
+
+```
+
+
+
+More examples:
+
+```shell
+cargo run -- --repo="D:/Workplace/Git/TestGitOperation" --commit="8bdca802af0514ce29947e20c6be1719974ad866" -v --pretty
+cargo run -- --repo="D:/Workplace/Git/TestGitOperation" --commits="4362fc4df48df74a46b56368d7fff1b02d01be72,8bdca802af0514ce29947e20c6be1719974ad866" -v --pretty
+cargo run -- --repo="D:/Workplace/Git/TestGitOperation" --commits-file="tests/files/commits.txt" -v --pretty
+cargo run -- --repo="D:/Workplace/Git/TestGitOperation" --commit-since="2023-05-20" --commit-until="2023-05-26"   -v --pretty
+cargo run -- --repo="D:/Workplace/Git/TestGitOperation" --commit-to="4362fc4df48df74a46b56368d7fff1b02d01be72" --commit-from="8bdca802af0514ce29947e20c6be1719974ad866"  -v --pretty
 ```
 
 

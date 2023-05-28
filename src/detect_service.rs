@@ -1,15 +1,11 @@
 use crate::*;
 use chrono::Local;
 use clap::Parser;
-use rayon::prelude::*;
 use regex::Regex;
 use std::error::Error;
-use std::fs;
 use std::fs::File;
 use std::io::prelude::*;
-use std::path::Path;
 use std::process;
-use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 
@@ -22,9 +18,8 @@ use std::time::Instant;
 /// If an error occurs during the detection process, it prints the error message
 /// and exits the application.
 ///
-pub fn git_detector() {
+pub fn sensleaks() {
     let args = Config::parse();
-
     if let Err(e) = detect(args) {
         eprintln!("Application error: {}", e);
         process::exit(0);
@@ -54,144 +49,109 @@ pub fn git_detector() {
 /// The error type is a boxed `dyn Error`, which allows for returning different types of error objects.
 ///
 pub fn detect(config: Config) -> Result<(), Box<dyn Error>> {
+
     // Record the start time of the scan
     let start = Instant::now();
-
-    // Get the path of the repository to scan
-    let path = Path::new(&config.repo);
-
-    // Create a mutex-protected vector to store the scan results
-    let results_mutex = Arc::new(Mutex::new(Vec::new()));
-
-    // load configs
-    let (allowlist, ruleslist, keywords) = match load_config_file(&config.config, &config.repo) {
-        Ok((allowlist, ruleslist, keywords)) => (allowlist, ruleslist, keywords),
-        Err(e) => {
-            eprintln!("Error: {}", e.message());
-            std::process::exit(1);
+    let current_time = Local::now();
+    println!("\x1b[34m[INFO]\x1b[0m[{}] Open repo ...", current_time.format("%Y-%m-%d %H:%M:%S"),);
+   
+    // load git repo
+    let repo = match load_repository(&config.repo) {
+        Ok(repo) => repo,
+        Err(e) => {     
+            eprintln!("{}", e.message());
+            process::exit(0);
         }
     };
-
-    // Start to detect
-    if path.is_dir() {
-        visit_dirs(
-            path,
-            &config,
-            &allowlist,
-            &ruleslist,
-            &keywords,
-            results_mutex.clone(),
-        )?;
-        let results = results_mutex.lock().unwrap();
-
-        // Record the end time of the scan
-        let end = Instant::now();
-
-        // Calculate the scan duration
-        let duration = end.duration_since(start);
-        let current_time = Local::now();
-
-        //  If the verbose flag is set, print the scan results to the console
-        if config.verbose {
-            if config.pretty {
-                println!("{:#?}", results);
-            } else {
-                println!("{:?}", results);
-            }
+   
+    // load allowlist, ruleslist, keywords
+    let scan = match load_config_file(&config.config) {
+        Ok((allowlist, ruleslist, keywords)) => Scan {
+            allowlist,
+            ruleslist,
+            keywords,
+        },
+        Err(e) => {
+            eprintln!("{}", e.message());
+            std::process::exit(0);
         }
-        // If a report file is specified, write the scan results to the report file in JSON format
-        if !config.report.is_empty() {
-            let mut file = File::create(config.report).expect("Failed to create file");
-            let json_result = serde_json::to_string_pretty(&results[..]);
-            match json_result {
-                Ok(json) => {
-                    // Write the JSON string to the file
-                    file.write_all(json.as_bytes()).expect("Filed to wrire");
+    };
+   match (
+        &config.commit,
+        &config.commits,
+        &config.commits_file,
+        &config.commit_since,
+        &config.commit_until,
+        &config.commit_from,
+        &config.commit_to,
+        config.uncommitted,
+    ) {
+        (Some(commit), _, _, _, _, _, _, _) => {
+           match handle_single_commit(repo, commit,scan)  {
+                Ok(output_items) => {
+                    config_info_after_detect(&config,output_items,start);
+                },
+                Err(err) => {
+                    println!("Error: {}", err);
                 }
-                Err(e) => {
-                    eprintln!("Failed to serialize JSON: {}", e);
-                }
-            }
+            }       
+            
         }
-
-        println!(
-            "\x1b[38;5;208mWARN:\x1b[0m[{}]{} leaks detected. XXX commits scanned in {:?}",
-            current_time.format("%Y-%m-%d %H:%M:%S"),
-            results.len(),
-            duration
-        );
-    } else {
-        eprintln!("{} is not a valid directory", path.display());
-    }
-    Ok(())
-}
-
-/// Recursively searches for files and directories within the specified directory, ignoring any files or directories in the allowlist_paths.
-///
-/// This function is used to recursively visit all files and directories within a given directory.
-/// It skips hidden files and files in the allowlist_paths specified in the `Allowlist` configuration.
-/// For each file encountered, it performs the detection process using the `detect_file` function,
-/// and stores the results in a vector protected by a mutex to allow for concurrent access and modification.
-/// If a subdirectory is encountered, the function recursively calls itself to visit the subdirectory.
-///
-/// # Arguments
-///
-/// * `dir` - The path to the directory to visit.
-/// * `config` - A reference to the `Config` object containing the configuration parameters.
-/// * `allowlist` - A reference to the `Allowlist` object containing the paths to ignore during the detection process.
-/// * `ruleslist` - A slice of `Rule` objects containing the rules to apply during the detection process.
-/// * `keywords` - A slice of strings representing the keywords to search for during the detection process.
-/// * `results_mutex` - An `Arc<Mutex<Vec<OutputItem>>>` object that provides thread-safe access to the results vector.
-///
-/// # Errors
-///
-/// This function returns an `Err` variant if any error occurs during the recursive visitation process.
-/// The error type is a boxed `dyn Error`, which allows for returning different types of error objects.
-///
-fn visit_dirs(
-    dir: &Path,
-    _config: &Config,
-    allowlist: &Allowlist,
-    ruleslist: &[Rule],
-    keywords: &[String],
-    results_mutex: Arc<Mutex<Vec<OutputItem>>>,
-) -> Result<(), Box<dyn Error>> {
-    if dir.is_dir() {
-        let entries: Vec<_> = fs::read_dir(dir)?.collect();
-        entries.par_iter().for_each(|entry| {
-            if let Ok(entry) = entry {
-                let path = entry.path();
-                // Skip hidden files.
-                if let Some(filename) = entry.file_name().to_str() {
-                    if filename.starts_with('.') || filename.contains('~')  {
-                        return;
-                    }
+        (_, Some(commits), _, _, _, _, _, _) => {
+            let commit_ids: Vec<&str> = commits.split(',').collect();
+            match handle_multiple_commits(repo, &commit_ids,scan)  {
+                Ok(output_items) => {
+                    config_info_after_detect(&config,output_items,start);
+                },
+                Err(err) => {
+                    println!("Error: {}", err);
                 }
-                // Skip files in allowlist_paths.
-                // Recursively searches all files in a given directory and its subdirectories for matches.
-                // Saves the search results for each scanned file.
-                if path.is_dir() {
-                    if !is_path_in_allowlist(&path, &allowlist.paths) {
-
-                        visit_dirs(
-                            &path,
-                            _config,
-                            allowlist,
-                            ruleslist,
-                            keywords,
-                            results_mutex.clone(),
-                        )
-                        .unwrap();
-                    }
-                } else if path.is_file() && !is_path_in_allowlist(&path, &allowlist.paths){
-        
-                    let result = detect_file(&path, ruleslist, keywords, allowlist).unwrap();
-                    let mut results = results_mutex.lock().unwrap();
-                    results.extend(result);
-                   
+            }    
+        }
+        (_, _, Some(file_path), _, _, _, _, _) => {
+            match handle_commits_file(repo, file_path,scan) {
+                Ok(output_items) => {
+                    config_info_after_detect(&config,output_items,start);
+                },
+                Err(err) => {
+                    println!("Error: {}", err);
                 }
-            }
-        });
+            } 
+        }
+        (_, _, _, Some(since), Some(until), _, _, _) => {
+            match handle_commit_range_by_time(repo, since, until,scan) {
+                Ok(output_items) => {
+                    config_info_after_detect(&config,output_items,start);
+                },
+                Err(err) => {
+                    println!("Error: {}", err);
+                }
+            } 
+        }
+        (_, _, _, _, _, Some(commit_from), Some(commit_to), _) => {
+            match handle_commit_range(repo, Some(commit_from.clone()), Some(commit_to.clone()),scan) {
+                Ok(output_items) => {
+                    config_info_after_detect(&config,output_items,start);
+                },
+                Err(err) => {
+                    println!("Error: {}", err);
+                }
+            } 
+        }
+        (_, _, _, _, _, _, _, true) => {
+            // TODO 
+            // match handle_uncommitted_files(repo)  {
+            //     Ok(output_items) => {
+            //         config_info_after_detect(&config,output_items,start);
+            //     },
+            //     Err(err) => {
+            //         println!("Error: {}", err);
+            //     }
+            // } 
+        }
+        (_, _, _, _, _, _, _, false) => {
+            // TODO 
+        }
     }
     Ok(())
 }
@@ -202,61 +162,116 @@ fn visit_dirs(
 /// It takes the file path, a slice of `Rule` objects, a slice of keywords, and an `Allowlist` object as input.
 /// If the file contents do not contain any of the specified keywords, the function returns an empty vector, indicating no secrets were found.
 /// Otherwise, it iterates through the ruleslist and uses regular expressions to find matches in the file contents.
-/// For each match, an `OutputItem` is created and added to a vector.
-/// The function returns the vector of `OutputItem`s, representing the detected secrets.
+/// For each match, an `Leak` is created and added to a vector.
+/// The function returns the vector of `Leak`s, representing the detected secrets.
 ///
 /// # Arguments
 ///
-/// * `path` - The path to the file to search for secrets.
+/// * `contents` - The contents of the file to search for secrets.
+/// * `path` - The path to the file being searched.
 /// * `ruleslist` - A slice of `Rule` objects representing the set of rules to apply during the detection process.
 /// * `keywords` - A slice of strings representing the keywords to search for in the file contents.
 /// * `allowlist` - An `Allowlist` object containing the paths to ignore during the detection process.
+/// * `commit_info` - A `CommitInfo` object representing the information about the commit.
 ///
 /// # Errors
 ///
 /// This function returns an `Err` variant if any error occurs during the file reading process.
 /// The error type is a boxed `dyn Error`, which allows for returning different types of error objects.
-fn detect_file(
-    path: &Path,
+pub fn detect_file(
+    contents:&str,
+    path:&str,
     ruleslist: &[Rule],
     keywords: &[String],
     allowlist: &Allowlist,
-) -> Result<Vec<OutputItem>, Box<dyn Error>> {
-    // Get the contents of the file.
-    let contents = fs::read_to_string(path)?;
+    commit_info:&CommitInfo
+) -> Result<Vec<Leak>, Box<dyn Error>> {
 
-    // Check if the file contents contain any keywords; if not, skip the file.
-    if !is_contains_keyword(&contents, keywords) {
+    // global allowlist
+    if is_path_in_allowlist(path, &allowlist.paths) {
         return Ok(Vec::new());
     }
 
-    let mut detect_info: Vec<OutputItem> = Vec::new(); 
+    // Check if the file contents contain any keywords; if not, skip the file.
+    if !is_contains_keyword(contents, keywords) {
+        return Ok(Vec::new());
+    }
+
+    // println!("{}",path);
+    let mut detect_info: Vec<Leak> = Vec::new(); 
     
     // Use regular expressions to find sensitive information.
     for rule in ruleslist.iter() {
-        
-        let results = detect_by_regex(path, rule, &contents, allowlist);
+        let results = detect_by_regex(path, rule, contents, allowlist);
+        if results.is_empty(){
+            continue;
+        }
         for (line_number, line, matched) in results.iter() {
-            let output_item = OutputItem {
+            let output_item = Leak {
                 line: line.to_string(),
                 line_number: *line_number as u32,
                 secret: matched.to_string(),
                 entropy: rule.entropy.map(|n| n.to_string()).unwrap_or_default(),
-                commit: "".to_string(),
-                repo: "".to_string(),
+                commit: commit_info.commit.to_string(),
+                repo: commit_info.repo.to_string(),
                 rule: rule.description.to_string(),
-                commit_message: "".to_string(),
-                author: "".to_string(),
-                email: "".to_string(),
-                file: path.to_string_lossy().to_string(),
-                date: "".to_string(),
+                commit_message: commit_info.commit_message.to_string(),
+                author: commit_info.author.to_string(),
+                email: commit_info.email.to_string(),
+                file: path.to_string(),
+                date: commit_info.date.to_string(),
                 tags: "".to_string(),
-                operation: "".to_string(),
+                operation: commit_info.operation.to_string(),
             };
             detect_info.push(output_item);
         }
     }
     Ok(detect_info)
+}
+
+/// Handle the commit information by searching for secrets in the commit files.
+///
+/// This function takes a slice of `CommitInfo` objects, a `Scan` object, and searches for secrets in the commit files.
+/// It iterates through each commit information and their associated files.
+/// For each file, it calls the `detect_file` function to search for secrets using the specified rules, keywords, and allowlist.
+/// If any secrets are detected in a file, the corresponding `Leak` objects are added to a vector.
+/// The function returns a `Results` object containing the total number of commits and the vector of detected secrets.
+///
+/// # Arguments
+///
+/// * `commit_info_list` - A slice of `CommitInfo` objects representing the commit information.
+/// * `scan` - A `Scan` object containing the rules, keywords, and allowlist for secret detection.
+///
+/// # Errors
+///
+/// This function returns an `Err` variant if any error occurs during the secret detection process.
+/// The error type is a boxed `dyn Error`, which allows for returning different types of error objects.
+///
+pub fn handle_commit_info(commit_info_list: &[CommitInfo],scan:Scan) -> Result<Results, Box<dyn Error>> {    
+    let ruleslist = scan.ruleslist;
+    let keywords = scan.keywords;
+    let allowlist = scan.allowlist;
+    let mut results = Vec::new(); 
+    for commit_info in commit_info_list {
+        for (file, content) in &commit_info.files {
+            let result = detect_file(content, file, &ruleslist, &keywords, &allowlist, commit_info);
+            
+            if let Ok(output) = result {
+                if !output.is_empty() {
+                    results.push(output); 
+                }
+            } else if let Err(err) = result {
+                println!("error={}", err);
+                return Err(err);
+            }
+        }
+    }
+    let flattened: Vec<Leak> = results.into_iter().flatten().collect();
+    let returns= Results{
+        commits_number:commit_info_list.len(),
+        outputs:flattened
+    };
+    Ok(returns)  
 }
 
 /// Searches a string for matches of a given regular expression and returns a vector of tuples.
@@ -278,14 +293,15 @@ fn detect_file(
 /// The first element of the tuple is the line number (1-indexed), the second element is the matched line, and the third element is the matched substring.
 ///
 fn detect_by_regex<'a>(
-    path: &Path,
+    path:&str,
     rules: &Rule,
     contents: &'a str,
-    allowlist: &Allowlist,
-) -> Vec<(usize, &'a str, &'a str)> {
+    allowlist: &Allowlist,) -> Vec<(usize, &'a str, &'a str,
+ 
+)> {
     // Create a regular expression object.
     let regex = Regex::new(&rules.regex).unwrap();
-
+    
     // Iterate over the lines in the string.
     let  results: Vec<(usize, &str, &str)> = contents
         .lines()
@@ -298,7 +314,9 @@ fn detect_by_regex<'a>(
                 .map(|matched| (i + 1, line, matched.as_str()))
         })
         .collect();
-    
+    if results.is_empty(){
+        return Vec::new();
+    }
     // The secrets that should be skipped
     let mut filtered_results: Vec<(usize, &str, &str)> = Vec::new();
    // Handle global allowlist
@@ -348,95 +366,138 @@ fn detect_by_regex<'a>(
             }
         }
     }
-    remove_duplicates(results, filtered_results)
+    
+    if filtered_results.is_empty(){
+        results
+    }else {
+        remove_duplicates(results, filtered_results)
+    }
+    
 }
 
+/// Configures and displays scan information after the detection process.
+///
+/// # Arguments
+///
+/// * `config` - A reference to a `Config` object representing the scan configuration.
+/// * `results` - The scanning results (`Results`) to be displayed.
+/// * `start` - The starting time of the scan (`Instant`).
+///
+fn config_info_after_detect(config: &Config,results:Results,start:Instant){
+        // Record the end time of the scan
+        let end = Instant::now();
+
+        // Calculate the scan duration
+        let duration = end.duration_since(start);
+        let current_time = Local::now();
+
+        //  If the verbose flag is set, print the scan results to the console
+        if config.verbose {
+            if config.pretty {
+                println!("{:#?}", results.outputs);
+            } else {
+                println!("{:?}", results.outputs);
+            }
+        }
+        // If a report file is specified, write the scan results to the report file in JSON format
+        if !config.report.is_empty() {
+            let mut file = File::create(&config.report).expect("Failed to create file");
+            let json_result = serde_json::to_string_pretty(&results.outputs[..]);
+            match json_result {
+                Ok(json) => {
+                    // Write the JSON string to the file
+                    file.write_all(json.as_bytes()).expect("Filed to wrire");
+                }
+                Err(e) => {
+                    eprintln!("Failed to serialize JSON: {}", e);
+                }
+            }
+        }
+
+        println!(
+            "\x1b[38;5;208m[WARN]\x1b[0m[{}]{} leaks detected. {} commits scanned in {:?}",
+            current_time.format("%Y-%m-%d %H:%M:%S"),
+            results.outputs.len(),
+            results.commits_number,
+            duration
+        );
+
+}
 
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    extern crate git2;
 
-    // test detect
-    #[test]
-    fn test_git_detector() {
-        let config = Config {
-            repo: "tests/files/testDir".to_string(),
-            config: "gitleaks.toml".to_string(),
-            report: "".to_string(),
-            verbose: false,
-            pretty: false,
-        };
-        
-        let result = detect(config);
-        assert!(result.is_ok()); 
-    }
-
-    // test visit_dirs
-    #[test]
-    fn test_visit_dirs() {
-        let config = Config {
-            repo: "tests/files/testDir".to_string(),
-            config: "gitleaks.toml".to_string(),
-            report: "".to_string(),
-            verbose: true,
-            pretty: false,
-        };
-        let allowlist = Allowlist {
-            commits: vec![],
-            paths: vec![],
-            regex_target: String::new(),
-            regexes: vec![],
-            stopwords: vec![],
-        };
-        let ruleslist = vec![ Rule {
-            description: "Digits".to_string(),
-            id: "key".to_string(),
-            regex: r"\d+".to_string(),
-            entropy: None,
-            keywords: vec![],
+    use chrono::{DateTime};
+    // Helper function to create a mock scan
+    fn create_mock_scan() -> Scan {
+        let rule = Rule {
+            description: String::from("Stripe Access Token"),
+            id: String::from("stripe-access-token"),
+            regex: String::from(r"(?i)(sk|pk)_(test|live)_[0-9a-z]{10,32}"),
+            entropy: Some(0.5),
+            keywords: vec![String::from("sk_test"), String::from("pk_test"),String::from("sk_live"), String::from("pk_live")],
             allowlist: None,
-        }];
-        let keywords = vec!["keyword1".to_string(), "keyword2".to_string()];
-        let results_mutex = Arc::new(Mutex::new(Vec::new()));
+        };
+        let ruleslist:Vec<Rule>=vec![rule];
 
-        let result = visit_dirs(
-            Path::new(&config.repo),
-            &config,
-            &allowlist,
-            &ruleslist,
-            &keywords,
-            results_mutex.clone(),
-        );
+        let keywords = vec![
+            String::from("pk_live"),
+            String::from("sk_live"),
+            String::from("sk_test"), 
+            String::from("pk_test"),];
+        
+        let allowlist = Allowlist {
+        paths: vec![],
+        commits: vec![ ],
+        regex_target: String::from("match"),
+        regexes: vec![ ],
+        stopwords: vec![],
+    };
 
-        assert!(result.is_ok());  
-
+    let scan=Scan{
+        allowlist,            
+        ruleslist,    
+        keywords
+        };
+        scan
     }
-    
+
     // test detect_file
-    
+    static PATH: &str = "tests/files/testdir/test.txt";
     #[test]
     fn test_detect_file() {
-        // Create a temporary file with test data
-        let path = Path::new("tests/files/testDir/test.txt");
-        // Define test data
-        let rule = Rule::new();
-
-        let ruleslist = vec![rule];
-        let keywords = vec!["test".to_string()];
-        let allowlist = Allowlist::new();
-
+       
+        let scan = create_mock_scan();
+        let content="twilio_api_key = SK12345678901234567890123456789012";
+        let commit_info = CommitInfo {
+            repo: "example/repo".to_string(),
+            commit: git2::Oid::from_str("1234567890abcdef1234567890abcdef12345678").unwrap(),
+            author: "John Doe".to_string(),
+            email: "johndoe@example.com".to_string(),
+            commit_message: "Example commit message".to_string(),
+            date: DateTime::parse_from_rfc3339("2023-05-26T12:34:56+00:00").unwrap().into(),
+            files: vec![
+                ("/path/to/file1".to_string(), "File 1 contents".to_string()),
+                ("/path/to/file2".to_string(), "File 2 contents".to_string()),
+            ],
+            tags: vec!["tag1".to_string(), "tag2".to_string()],
+            operation: "commit".to_string(),
+        };
         // Call the detect_file function
-        let result = detect_file(&path, &ruleslist, &keywords, &allowlist);
+        let result = 
+        detect_file(PATH, content,&scan.ruleslist, &scan.keywords, &scan.allowlist,&commit_info);
 
         // Assert that the result is as expected
         let output = result.unwrap();
         assert_eq!(output.len(), 0);
     }
     // test detect_by_regex
+   
     #[test]
     fn test_detect_by_regex() {
-        let path = Path::new("tests/files/testdir/test.txt");
         let rules = Rule {
             description: "Digits".to_string(),
             id: "key".to_string(),
@@ -454,7 +515,7 @@ mod tests {
             stopwords: vec![],
         };
 
-        let result = detect_by_regex(&path, &rules, contents, &allowlist);
+        let result = detect_by_regex(PATH, &rules, contents, &allowlist);
 
         assert_eq!(result.len(), 4);
         assert_eq!(result[0], (1, "123", "123"));
@@ -465,7 +526,6 @@ mod tests {
    
     #[test]
     fn test_detect_by_regex_with_rules_allowlist_regex_target_match() {
-        let path = Path::new("tests/files/testdir/test.txt");
         let rules = Rule {
             description: "Digits".to_string(),
             id: "key".to_string(),
@@ -489,7 +549,7 @@ mod tests {
             stopwords: vec![],
         };
 
-        let result = detect_by_regex(&path, &rules, contents, &allowlist);
+        let result = detect_by_regex(PATH, &rules, contents, &allowlist);
         println!("{:?}",result);
         assert_eq!(result.len(), 4);
         assert_eq!(result[0], (1, "123", "123"));
@@ -500,7 +560,7 @@ mod tests {
 
     #[test]
     fn test_detect_by_regex_with_rules_allowlist_regex_target_line() {
-        let path = Path::new("tests/files/testdir/test.txt");
+
         let rules = Rule {
             description: "Digits".to_string(),
             id: "key".to_string(),
@@ -524,7 +584,7 @@ mod tests {
             stopwords: vec![],
         };
 
-        let result = detect_by_regex(&path, &rules, contents, &allowlist);
+        let result = detect_by_regex(PATH, &rules, contents, &allowlist);
         println!("{:?}",result);
         assert_eq!(result.len(), 3);
         assert_eq!(result[0], (1, "123", "123"));
@@ -535,7 +595,7 @@ mod tests {
    
     #[test]
     fn test_detect_by_regex_with_global_allowlist() {
-        let path = Path::new("tests/files/testdir/test.txt");
+ 
         let rules = Rule {
             description: "Digits".to_string(),
             id: "key".to_string(),
@@ -559,7 +619,7 @@ mod tests {
             stopwords: vec!["client".to_string()],
         };
 
-        let result = detect_by_regex(&path, &rules, contents, &allowlist);
+        let result = detect_by_regex(PATH, &rules, contents, &allowlist);
         assert_eq!(result.len(), 4);
         assert_eq!(result[0], (1, "123", "123"));
         assert_eq!(result[1], (2, "456", "456"));

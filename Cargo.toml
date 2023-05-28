@@ -1,6 +1,6 @@
 [package]
 name = "sensleak"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -18,3 +18,5 @@ serde_json = "1.0"
 chrono = "0.4"
 assert_cmd = "2.0.10"
 tempfile = "3.2.0"
+git2 = "0.17.1"
+mockito = "1.0.2"
