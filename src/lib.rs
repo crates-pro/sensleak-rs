@@ -1,9 +1,7 @@
-// mod error;
 mod models;
 mod file_utils;
 mod git_service;
 mod git_util;
-// mod error_constants;
 mod custom_error;
 
 pub mod detect_service;
