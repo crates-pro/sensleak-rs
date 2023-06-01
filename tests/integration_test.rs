@@ -12,5 +12,4 @@
     
 //     let result = detect(config);
 //     assert!(result.is_ok()); 
-// }
-
+//}

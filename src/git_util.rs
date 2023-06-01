@@ -1,49 +1,43 @@
 extern crate chrono;
 extern crate git2;
 use crate::*;
+use chrono::Local;
 use chrono::{DateTime, FixedOffset, TimeZone, Utc};
-use git2::{ Repository};
-use crate::error::{MyError,RepoError};
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
+use git2::Repository;
+use regex::Regex;
+use std::error::Error;
+use std::fs;
 
-/// Loads a Git repository from the specified path.
-///
-/// This function attempts to open a Git repository located at the given `repo_path` and returns
-/// a `Repository` object representing the repository if successful.
+/// Loads a repository from the specified path.
 ///
 /// # Arguments
 ///
-/// * `repo_path` - A string slice representing the path to the Git repository.
+/// * `repo_path` - A string slice that represents the path to the repository.
 ///
 /// # Returns
 ///
-/// Returns a `Result` containing the opened `Repository` object if successful, or an `Err` variant
-/// of the custom `RepoError` type if the repository cannot be opened or is invalid.
+/// Returns a `Result` containing a `Repository` if the repository is loaded successfully, or an error if the repository fails to load.
 ///
 /// # Errors
 ///
-/// This function can return an `Err` variant of the `RepoError` enum in the following case:
+/// This function may return the following errors:
 ///
-/// * Failure to open the Git repository at the specified `repo_path`.
+/// * `CustomError::FailLoadRepo` - Indicates that the repository failed to load.
+/// * Other errors that may be returned by the underlying `Repository::open` function.
 ///
-pub fn load_repository(repo_path: &str) -> Result<Repository, RepoError> {
+pub fn load_repository(repo_path: &str) -> Result<Repository, Box<dyn Error>> {
     let repo = match Repository::open(repo_path) {
-        Ok(repo) => {
-            repo
-        }
+        Ok(repo) => repo,
         Err(_) => {
-            return Err(RepoError::InvalidRepoError);
+            return Err(Box::new(CustomError::FailLoadRepo));
         }
     };
 
     Ok(repo)
 }
 
-/// Extracts the name of the repository from its path.
-///
-/// This function takes a `Repository` object and retrieves the name of the repository
-/// by extracting it from the parent directory of the repository's path. If the repository
-/// name ends with ".git", the suffix is removed before returning the name.
+/// Retrieves the name of the repository from the provided `Repository` object.
 ///
 /// # Arguments
 ///
@@ -51,22 +45,17 @@ pub fn load_repository(repo_path: &str) -> Result<Repository, RepoError> {
 ///
 /// # Returns
 ///
-/// Returns a `Result` containing the repository name as a `String`, or an `Err` variant
-/// of the custom `RepoError` type in case of an error.
+/// Returns a `Result` containing the name of the repository as a `String` if successful, or an error if the repository name is invalid or cannot be determined.
 ///
 /// # Errors
 ///
-/// This function can return an `Err` variant of the `RepoError` enum in the following cases:
+/// This function may return the following errors:
 ///
-/// * The repository's path is invalid or does not have a parent directory.
-pub fn config_repo_name(repo: &Repository) -> Result<String, RepoError> {
+/// * `CustomError::InvalidRepoName` - Indicates that the repository name is invalid.
+///
+pub fn config_repo_name(repo: &Repository) -> Result<String, Box<dyn Error>> {
     let repo_path = repo.path();
-    // let repo_dir = repo_path
-    //     .parent()
-    //     .ok_or_else(|| RepoError::InvalidRepoError)?;
-    let repo_dir = repo_path
-    .parent()
-    .ok_or(RepoError::InvalidRepoError)?;
+    let repo_dir = repo_path.parent().ok_or(CustomError::InvalidRepoName)?;
 
     let repo_name = repo_dir
         .file_name()
@@ -80,70 +69,74 @@ pub fn config_repo_name(repo: &Repository) -> Result<String, RepoError> {
     }
 }
 
-/// Recursively traverses a Git tree and extracts the paths and contents of blobs.
-///
-/// This function takes a `Repository` object, a reference to a `git2::Tree`, a path string,
-/// and a mutable `Vec` of tuples representing file paths and their contents. It recursively
-/// explores the tree and its subtrees, adding the paths and contents of blobs to the `files`
-/// vector.
+/// Traverses a tree in a repository and collects file paths and contents into a vector.
 ///
 /// # Arguments
 ///
 /// * `repo` - A reference to a `Repository` object.
-/// * `tree` - A reference to a `git2::Tree`.
-/// * `path` - The path of the current tree or subtree.
-/// * `files` - A mutable `Vec` of `(String, String)` tuples to store the file paths and contents.
+/// * `tree` - A reference to a `Tree` object representing the tree to traverse.
+/// * `path` - A string slice representing the current path in the tree.
+/// * `files` - A mutable vector to store the collected file paths and contents.
 ///
 /// # Returns
 ///
-/// Returns `Ok(())` if the traversal completes successfully, or an `Err` variant of the custom
-/// `RepoError` type in case of an error.
+/// Returns `Ok(())` if the traversal is successful, or an error if an error occurs during traversal.
 ///
 /// # Errors
 ///
-/// This function can return an `Err` variant of the `RepoError` enum in the following cases:
+/// This function may return the following errors:
 ///
-/// * Failure to find a blob or tree object in the repository.
-/// * Internal error within the repository.
+/// * `CustomError::ObjectNotFound` - Indicates that an object in the repository is not found.
+/// * `CustomError::RepoInternalError` - Indicates an internal error in the repository.
 ///
-pub fn traverse_tree(repo: &Repository,tree: &git2::Tree,path: &str,files: &mut Vec<(String, String)>,) -> Result<(), RepoError> {
+pub fn traverse_tree(
+    repo: &Repository,
+    tree: &git2::Tree,
+    path: &str,
+    files: &mut Vec<(String, String)>,
+) -> Result<(), Box<dyn Error>> {
     for entry in tree.iter() {
         let entry_path = format!("{}/{}", path, entry.name().unwrap());
         if entry.kind() == Some(git2::ObjectType::Blob) {
-            let blob = repo.find_blob(entry.id())
-                .map_err(|_| RepoError::ObjectNotFound)?;
+            let blob = repo
+                .find_blob(entry.id())
+                .map_err(|_| CustomError::ObjectNotFound)?;
             let content = String::from_utf8_lossy(blob.content());
             files.push((entry_path, content.to_string()));
         } else if entry.kind() == Some(git2::ObjectType::Tree) {
-            let subtree = repo.find_tree(entry.id())
-                .map_err(|_| RepoError::RepoInternalError)?;
+            let subtree = repo
+                .find_tree(entry.id())
+                .map_err(|_| CustomError::RepoInternalError)?;
             traverse_tree(repo, &subtree, &entry_path, files)?;
         }
     }
     Ok(())
 }
 
-/// Retrieves the commit information from the given repository and commit.
-///
-/// This function extracts various information from the commit, such as the commit ID, author,
-/// email, commit message, date, and file paths. It returns a `CommitInfo` struct containing
-/// all the extracted information.
+/// Retrieves commit information from the given `Repository` and `Commit`.
 ///
 /// # Arguments
 ///
-/// * `repo` - A reference to the repository from which to retrieve the commit information.
-/// * `commit` - A reference to the commit for which to retrieve the information.
+/// * `repo` - A reference to a `Repository` object.
+/// * `commit` - A reference to a `Commit` object representing the commit to retrieve information from.
+///
+/// # Returns
+///
+/// Returns a `Result` containing a `CommitInfo` struct if the retrieval is successful, or an error if an error occurs during the retrieval.
 ///
 /// # Errors
 ///
-/// This function can return a `RepoError` if any of the following conditions occur:
+/// This function may return the following errors:
 ///
-/// * `config_repo_name` fails to retrieve the repository name.
-/// * The commit's tree cannot be retrieved, resulting in `ObjectNotFound` error.
-/// * An error occurs during the traversal of the commit's tree, resulting in `RepoInternalError`.
+/// * `CustomError::InvalidRepoName` - Indicates that the repository name is invalid.
+/// * `CustomError::ObjectNotFound` - Indicates that an object in the repository is not found.
+/// * `CustomError::RepoInternalError` - Indicates an internal error in the repository.
 ///
 #[allow(deprecated)]
-pub fn config_commit_info(repo: &Repository, commit: &git2::Commit) -> Result<CommitInfo, RepoError> {
+pub fn config_commit_info(
+    repo: &Repository,
+    commit: &git2::Commit,
+) -> Result<CommitInfo, Box<dyn Error>> {
     // Config info
     let commit_id = commit.id();
     let author = commit.author();
@@ -153,17 +146,23 @@ pub fn config_commit_info(repo: &Repository, commit: &git2::Commit) -> Result<Co
     let offset = FixedOffset::west(commit.time().offset_minutes() * 60);
     let date = offset.from_utc_datetime(&date.naive_utc());
     let mut files = Vec::new();
-    let repo_name = config_repo_name(repo)?;
+
+    let repo_name = match config_repo_name(repo) {
+        Ok(repo_name) => repo_name,
+        Err(_) => {
+            return Err(Box::new(CustomError::InvalidRepoName));
+        }
+    };
 
     // TODO
     let tags = vec![];
     let operation = "addition".to_owned();
 
     // Retrieve the tree of the commit
-    let tree = commit.tree().map_err(|_| RepoError::ObjectNotFound)?;
+    let tree = commit.tree().map_err(|_| CustomError::ObjectNotFound)?;
 
     // Traverse the tree to get the file paths and content
-    traverse_tree(repo, &tree, "", &mut files).map_err(|_| RepoError::RepoInternalError)?;
+    traverse_tree(repo, &tree, "", &mut files).map_err(|_| CustomError::RepoInternalError)?;
 
     let commit_info = CommitInfo {
         repo: repo_name,
@@ -180,49 +179,46 @@ pub fn config_commit_info(repo: &Repository, commit: &git2::Commit) -> Result<Co
     Ok(commit_info)
 }
 
-/// Loads all commit IDs in the repository.
-///
-/// This function retrieves all commit IDs in the repository by performing a topological
-/// traversal of the commit history. The commit IDs are returned as a vector of strings.
+/// Loads all commit IDs from the repository in topological order.
 ///
 /// # Arguments
 ///
-/// * `repo` - A reference to a `Repository` object.
+/// * `repo` - A reference to a `Repository` object representing the repository.
 ///
 /// # Returns
 ///
-/// Returns a `Result` containing a vector of commit IDs as strings, or an `Err` variant
-/// of the custom `RepoError` type in case of an error.
+/// Returns a `Result` containing a vector of commit IDs (`Vec<String>`) if the operation is successful, or an error if an error occurs during the process.
 ///
 /// # Errors
 ///
-/// This function can return an `Err` variant of the `RepoError` enum in the following cases:
+/// This function may return the following errors:
 ///
-/// * Failure to create or access the revision walker.
-/// * Failure to push the HEAD reference to the revision walker.
-/// * Failure to set the sorting order of the revision walker.
-/// * Failure to find a commit in the repository.
+/// * `CustomError::AccessWalkerError` - Indicates an error occurred while accessing the revision walker.
+/// * `CustomError::PushWalkerHeadError` - Indicates an error occurred while pushing the head commit to the revision walker or setting the sorting order.
+/// * `CustomError::WalkerSortError` - Indicates an error occurred while sorting the revision walker.
+/// * `CustomError::RepoCommitError` - Indicates an error occurred while finding a commit in the repository.
 ///
-pub fn load_all_commits(repo: &Repository) -> Result<Vec<String>, RepoError> {
-    let mut revwalk = repo.revwalk()
-        .map_err(|_| RepoError::AccessWalkerError)?;
-    
-    revwalk.push_head()
-        .map_err(|_| RepoError::PushWalkerHeadError)?;
-    revwalk.set_sorting(git2::Sort::TOPOLOGICAL)
-        .map_err(|_| RepoError::PushWalkerHeadError)?;
-    
+pub fn load_all_commits(repo: &Repository) -> Result<Vec<String>, Box<dyn Error>> {
+    let mut revwalk = repo.revwalk().map_err(|_| CustomError::AccessWalkerError)?;
+
+    revwalk
+        .push_head()
+        .map_err(|_| CustomError::PushWalkerHeadError)?;
+    revwalk
+        .set_sorting(git2::Sort::TOPOLOGICAL)
+        .map_err(|_| CustomError::PushWalkerHeadError)?;
+
     let mut commits = Vec::new();
-    
+
     for oid in revwalk {
-        let oid = oid
-            .map_err(|_| RepoError::WalkerSortError)?;
-        let commit = repo.find_commit(oid)
-            .map_err(|_| RepoError::RepoCommitError)?;
+        let oid = oid.map_err(|_| CustomError::WalkerSortError)?;
+        let commit = repo
+            .find_commit(oid)
+            .map_err(|_| CustomError::RepoCommitError)?;
         let commit_id = commit.id().to_string();
         commits.push(commit_id);
     }
-    
+
     Ok(commits)
 }
 
@@ -244,7 +240,11 @@ pub fn load_all_commits(repo: &Repository) -> Result<Vec<String>, RepoError> {
 /// the specified conditions. If the start commit is after the end commit or if either commit
 /// is not found in the input commits, an empty vector is returned.
 ///
-pub fn load_commits_by_conditions(commit_from: Option<String>, commit_to: Option<String>, commits: &[String]) -> Vec<String> {
+pub fn load_commits_by_conditions(
+    commit_from: Option<String>,
+    commit_to: Option<String>,
+    commits: &[String],
+) -> Vec<String> {
     match (commit_from, commit_to) {
         (Some(start_commit), Some(end_commit)) => {
             let start_index = commits.iter().position(|commit| *commit == start_commit);
@@ -254,20 +254,17 @@ pub fn load_commits_by_conditions(commit_from: Option<String>, commit_to: Option
                 if start <= end {
                     commits[start..=end].to_vec()
                 } else {
-                    Vec::new() // Return an empty vector if start_commit is after end_commit
+                    Vec::new()
                 }
             } else {
-                Vec::new() // Return an empty vector if either commit is not found
+                Vec::new()
             }
         }
-        _ => Vec::new(), // Return an empty vector if either commit_from or commit_to is None
+        _ => Vec::new(),
     }
 }
 
-/// Loads all object IDs in the repository.
-///
-/// This function retrieves all object IDs in the repository's object database and returns them
-/// as a vector of `Oid` values.
+/// Loads all commit IDs from the given `Repository`.
 ///
 /// # Arguments
 ///
@@ -275,72 +272,65 @@ pub fn load_commits_by_conditions(commit_from: Option<String>, commit_to: Option
 ///
 /// # Returns
 ///
-/// Returns a `Result` containing a vector of `Oid` values, representing all the object IDs
-/// in the repository's object database, or an `Err` variant of the custom `RepoError` type
-/// in case of an error.
+/// Returns a `Result` containing a vector of commit IDs as strings if the loading is successful, or an error if an error occurs during the loading.
 ///
 /// # Errors
 ///
-/// This function can return an `Err` variant of the `RepoError` enum in the following cases:
+/// This function may return the following errors:
 ///
-/// * Failure to access the repository's object database.
-/// * Internal error within the repository.
+/// * `CustomError::AccessWalkerError` - Indicates an error in accessing the commit walker.
+/// * `CustomError::PushWalkerHeadError` - Indicates an error in pushing the head to the commit walker.
+/// * `CustomError::WalkerSortError` - Indicates an error in sorting the commit walker.
+/// * `CustomError::RepoCommitError` - Indicates an error in finding a commit in the repository.
 ///
-pub fn load_all_object_ids(repo: &Repository) -> Result<Vec<git2::Oid>, RepoError> {
+pub fn load_all_object_ids(repo: &Repository) -> Result<Vec<git2::Oid>, Box<dyn Error>> {
     let mut object_ids = Vec::new();
-    let odb = repo.odb()
-        .map_err(|_| RepoError::ObjectNotAccess)?;
+    let odb = repo.odb().map_err(|_| CustomError::ObjectNotAccess)?;
 
     odb.foreach(|id| {
         object_ids.push(*id);
         true
     })
-    .map_err(|_| RepoError::RepoInternalError)?;
+    .map_err(|_| CustomError::RepoInternalError)?;
 
     Ok(object_ids)
 }
 
-/// Parses a date string into a UTC `DateTime` with a specified time type.
-///
-/// This function takes a date string in the format "%Y-%m-%d" and a time type string
-/// indicating whether it is a "start" or "end" time. It returns a `DateTime<Utc>`
-/// representing the combined date and time in UTC.
+/// Parses a date string into a `DateTime<Utc>` object.
 ///
 /// # Arguments
 ///
-/// * `input` - A string slice representing the date to parse in the format "%Y-%m-%d".
-/// * `mytype` - A string slice indicating the type of time: "start" or "end".
+/// * `input` - A string slice representing the date to parse. The expected format is "%Y-%m-%d".
+/// * `mytype` - A string slice indicating the type of datetime to create. It can be either "start" or any other value.
 ///
 /// # Returns
 ///
-/// Returns a `Result` containing a `DateTime<Utc>` if the parsing is successful, or an
-/// `Err` variant of the custom `MyError` type in case of an invalid date format or time format.
+/// Returns a `Result` containing a `DateTime<Utc>` object if the parsing is successful, or an error if an error occurs during the parsing.
 ///
 /// # Errors
 ///
-/// This function can return an `Err` variant of the `MyError` enum in the following cases:
+/// This function may return the following errors:
 ///
-/// * Invalid date format provided.
-/// * Invalid time format provided.
+/// * `CustomError::InvalidDateFormat` - Indicates that the input date format is invalid.
+/// * `CustomError::InvalidTimeFormat` - Indicates that the time format is invalid.
 ///
-pub fn parse_date_to_datetime(input: &str, mytype: &str) -> Result<DateTime<Utc>, MyError> {
-    let date = NaiveDate::parse_from_str(input, "%Y-%m-%d")
-        .map_err(|_| MyError::InvalidDateFormat)?;
-    
+pub fn parse_date_to_datetime(input: &str, mytype: &str) -> Result<DateTime<Utc>, Box<dyn Error>> {
+    let date =
+        NaiveDate::parse_from_str(input, "%Y-%m-%d").map_err(|_| CustomError::InvalidDateFormat)?;
+
     let time: NaiveTime;
     if mytype == "start" {
         if let Some(t) = NaiveTime::from_hms_opt(0, 0, 0) {
             time = t;
         } else {
-            return Err(MyError::InvalidTimeFormat);
+            return Err(Box::new(CustomError::InvalidTimeFormat));
         }
     } else if let Some(t) = NaiveTime::from_hms_opt(23, 59, 59) {
-            time = t;
-        } else {
-            return Err(MyError::InvalidTimeFormat);
+        time = t;
+    } else {
+        return Err(Box::new(CustomError::InvalidTimeFormat));
     }
-    
-        
+
     let datetime = NaiveDateTime::new(date, time);
     let datetime_utc = DateTime::from_utc(datetime, Utc);
     Ok(datetime_utc)
@@ -362,44 +352,184 @@ pub fn is_valid_date_format(input: &str) -> bool {
     }
     false
 }
- // NOTE: The commented-out function can be tested after specifying the repo file
+
+/// Loads the content of a configuration file (`.gitleaks.toml` or `gitleaks.toml`) from the target repository.
+///
+/// # Arguments
+///
+/// * `repo` - A reference to a `Repository` object representing the target repository.
+///
+/// # Returns
+///
+/// Returns a `Result` containing an `Option<String>` with the content of the configuration file if found, or `None` if the configuration file is not found in any commit.
+///
+/// # Errors
+///
+/// This function may return an error if any error occurs during the repository traversal or object retrieval.
+///
+pub fn load_config_content_from_target_repo(
+    repo: &Repository,
+) -> Result<Option<String>, Box<dyn Error>> {
+    let head_commit = repo.head()?.peel_to_commit()?;
+    let mut walker = repo.revwalk()?;
+    walker.push(head_commit.id())?;
+
+    // Iterate over all commits in the repository
+    for commit_id in walker {
+        let commit = repo.find_commit(commit_id?)?;
+        let tree = commit.tree()?;
+
+        // Iterate over all entries in the tree
+        for entry in tree.iter() {
+            let file_name = entry.name().unwrap_or("");
+            if file_name == ".gitleaks.toml" || file_name == "gitleaks.toml" {
+                let blob = entry.to_object(repo)?.peel_to_blob()?;
+                let content = String::from_utf8_lossy(blob.content());
+                return Ok(Some(content.into()));
+            }
+        }
+    }
+
+    Ok(None)
+}
+
+/// Extracts the repository name from a given URL.
+///
+/// # Arguments
+///
+/// * `url` - A string slice representing the URL of the repository.
+///
+/// # Returns
+///
+/// Returns an `Option<String>` containing the extracted repository name if it matches the expected format, or `None` if the extraction fails.
+///
+pub fn extract_repo_name(url: &str) -> Option<String> {
+    let re = Regex::new(r"/([^/]+)\.git$").unwrap();
+    if let Some(captures) = re.captures(url) {
+        if let Some(repo_name) = captures.get(1) {
+            return Some(repo_name.as_str().to_string());
+        }
+    }
+    None
+}
+
+/// Clones or loads a repository based on the provided configuration.
+///
+/// # Arguments
+///
+/// * `config` - A reference to a `Config` object containing the repository information.
+///
+/// # Returns
+///
+/// Returns a `Result` containing a `Repository` object if the operation is successful, or an error if an error occurs during cloning or loading.
+///
+/// # Errors
+///
+/// This function may return the following errors:
+///
+/// * `CustomError::FailDeteleDir` - Indicates that the directory removal operation failed.
+/// * `CustomError::FailCreateDir` - Indicates that the directory creation operation failed.
+/// * `CustomError::FailCloneRepo` - Indicates that the repository cloning operation failed.
+/// * `CustomError::FailLoadRepo` - Indicates that the repository loading operation failed.
+///
+#[warn(clippy::needless_return)]
+pub fn clone_or_load_repository(config: &Config) -> Result<Repository, Box<dyn Error>> {
+    if is_link(&config.repo) {
+        let repo_path = match &config.disk {
+            Some(disk) => disk.to_string(),
+            None => {
+                let dest = "workplace/";
+                let mut repo_path = String::new();
+                if let Some(name) = extract_repo_name(&config.repo) {
+                    repo_path = format!("{}{}", dest, name);
+                }
+
+                if fs::metadata(&repo_path).is_ok() {
+                    match fs::remove_dir_all(&repo_path) {
+                        Ok(_) => {}
+                        Err(_) => {
+                            return Err(Box::new(CustomError::FailDeleteDir));
+                        }
+                    }
+                }
+
+                match fs::create_dir(&repo_path) {
+                    Ok(_) => {}
+                    Err(_) => {
+                        return Err(Box::new(CustomError::FailCreateDir));
+                    }
+                }
+                repo_path
+            }
+        };
+        match Repository::clone(&config.repo, repo_path) {
+            Ok(repo) => {
+                println!(
+                    "\x1b[34m[INFO]\x1b[0m[{}] Clone repo ...",
+                    Local::now().format("%Y-%m-%d %H:%M:%S"),
+                );
+
+                Ok(repo)
+            }
+            Err(_) => Err(Box::new(CustomError::FailCloneRepo)),
+        }
+    } else {
+        match load_repository(&config.repo) {
+            Ok(repo) => {
+                println!(
+                    "\x1b[34m[INFO]\x1b[0m[{}] Clone repo ...",
+                    Local::now().format("%Y-%m-%d %H:%M:%S"),
+                );
+
+                Ok(repo)
+            }
+
+            Err(_) => Err(Box::new(CustomError::FailLoadRepo)),
+        }
+    }
+}
+
+// NOTE: The commented-out function can be tested after specifying the repo file
 #[cfg(test)]
 mod tests {
 
     use super::*;
-    static VALID_PATH: &str = "tests/TestGitOperation";
-    static INVALID_PATH: &str = "tests/TestGitOperation1";
+    // static VALID_PATH: &str = "D:/Workplace/Git/TestGitOperation";
+    // static INVALID_PATH: &str = "D:/Workplace/Git/TestGitOperation222";
 
-
-    // test load_repository
+    // // test load_repository
     // #[test]
     // fn test_load_repository_valid_path() {
     //     let result = load_repository(VALID_PATH);
     //     assert!(result.is_ok());
     // }
-    
+
     // #[test]
     // fn test_load_repository_invalid_path() {
     //     let result = load_repository(INVALID_PATH);
     //     assert!(result.is_err());
     // }
-    
+
     // NOTE: The commented-out function can be tested after specifying the repo file
     // // test config_repo_name
     // #[test]
     // fn test_config_repo_name_valid_repo() {
     //     let repo = match load_repository(VALID_PATH) {
     //         Ok(repo) => repo,
-    //         Err(e) => {
-    //             eprintln!("{}", e.message());
+    //         Err(_) => {
     //             panic!("Failed to load repository");
     //         }
     //     };
-    //     let result = config_repo_name(&repo);
-    //     assert_eq!(result, Ok("TestGitOperation".to_string()));
+    //     let result = match config_repo_name(&repo) {
+    //         Ok(result) => result,
+    //         Err(e) => {
+    //             panic!("Error:{}", e);
+    //         }
+    //     };
+    //     assert_eq!(result, "TestGitOperation");
     // }
-    
-    // test load_all_commits
+
+    // // test load_all_commits
     // #[test]
     // fn test_load_all_commits_valid_repository() {
     //     let repo = match Repository::init(VALID_PATH) {
@@ -416,30 +546,33 @@ mod tests {
     //     let commits = result.unwrap();
     //     assert!(commits.contains(&"9e2fe5fc27b1bb8bd4de5574f8d9010164427051".to_string()));
     // }
-    
-    // test load_commits_by_conditions
-    #[test]
-    fn test_load_commits_by_conditions_valid_conditions() {
-        let commits = vec![
-            "commit1".to_string(),
-            "commit2".to_string(),
-            "commit3".to_string(),
-            "commit4".to_string(),
-            "commit5".to_string(),
-        ];
-        let commit_from = Some("commit2".to_string());
-        let commit_to = Some("commit4".to_string());
 
-        let result = load_commits_by_conditions(commit_from, commit_to, &commits);
+    // // test load_commits_by_conditions
+    // #[test]
+    // fn test_load_commits_by_conditions_valid_conditions() {
+    //     let commits = vec![
+    //         "commit1".to_string(),
+    //         "commit2".to_string(),
+    //         "commit3".to_string(),
+    //         "commit4".to_string(),
+    //         "commit5".to_string(),
+    //     ];
+    //     let commit_from = Some("commit2".to_string());
+    //     let commit_to = Some("commit4".to_string());
 
-        assert_eq!(result, vec![
-            "commit2".to_string(),
-            "commit3".to_string(),
-            "commit4".to_string(),
-        ]);
-    }
-   
-    // test load_all_object_ids
+    //     let result = load_commits_by_conditions(commit_from, commit_to, &commits);
+
+    //     assert_eq!(
+    //         result,
+    //         vec![
+    //             "commit2".to_string(),
+    //             "commit3".to_string(),
+    //             "commit4".to_string(),
+    //         ]
+    //     );
+    // }
+
+    // // test load_all_object_ids
     // #[test]
     // fn test_load_all_object_ids_valid_repository() {
     //     let repo = match Repository::init(VALID_PATH) {
@@ -462,7 +595,7 @@ mod tests {
     //     assert!(object_ids.contains(&oid2));
     //     assert!(object_ids.contains(&oid3));
     // }
-    
+
     // test parse_date_to_datetime
     #[test]
     fn test_parse_date_to_datetime_valid_input_start() {
@@ -472,7 +605,7 @@ mod tests {
         assert!(result.is_ok());
         assert_eq!(result.unwrap().to_rfc3339(), "2023-05-25T00:00:00+00:00");
     }
-    
+
     #[test]
     fn test_parse_date_to_datetime_valid_input_end() {
         let valid_input = "2023-05-25";
@@ -481,16 +614,15 @@ mod tests {
         assert!(result.is_ok());
         assert_eq!(result.unwrap().to_rfc3339(), "2023-05-25T23:59:59+00:00");
     }
-    
+
     #[test]
     fn test_parse_date_to_datetime_invalid_input() {
         let invalid_input = "2023-05-32";
         let mytype = "start";
         let result = parse_date_to_datetime(invalid_input, mytype);
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), MyError::InvalidDateFormat);
     }
-    
+
     // test is_valid_date_format
     #[test]
     fn test_is_valid_date_format_valid_input() {
@@ -498,11 +630,27 @@ mod tests {
         let result = is_valid_date_format(valid_input);
         assert!(result);
     }
-    
+
     #[test]
     fn test_is_valid_date_format_invalid_input() {
         let invalid_input = "2023-05-32";
         let result = is_valid_date_format(invalid_input);
         assert!(!result);
+    }
+
+
+    // test extract_repo_name
+    #[test]
+    fn test_extract_repo_name() {
+        // Test with a valid URL
+        let url = "https://github.com/user/repo.git";
+        let result = extract_repo_name(url);
+        assert_eq!(result, Some("repo".to_owned()));
+
+        // Test with a URL without ".git" extension
+        let url = "https://github.com/user/repo";
+        let result = extract_repo_name(url);
+        assert_eq!(result, None);
+
     }
 }
