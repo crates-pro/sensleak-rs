@@ -339,7 +339,9 @@ pub fn parse_date_to_datetime(input: &str, mytype: &str) -> Result<DateTime<Utc>
     }
 
     let datetime = NaiveDateTime::new(date, time);
-    let datetime_utc = DateTime::from_utc(datetime, Utc);
+    // let datetime_utc = DateTime::from_utc(datetime, Utc);
+    let datetime_utc = DateTime::from_naive_utc_and_offset(datetime, Utc);
+
     Ok(datetime_utc)
 }
 
