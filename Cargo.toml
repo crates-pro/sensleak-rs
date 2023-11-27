@@ -27,7 +27,7 @@ mockito = "1.0.2"
 csv = "1.1"
 log = "0.4"
 env_logger = "0.10.0"
-axum = { version = "0.6.1", features = ["headers", "macros"] }
+axum = { version = "0.7.1", features = ["headers", "macros"] }
 tokio = { version = "1.21.2", features = ["macros", "rt-multi-thread"] }
 tower-http = { version = "0.5.0", features = ["cors"] }
 utoipa = { version = "3.3.0", features = ["axum_extras"] }
