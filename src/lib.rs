@@ -25,16 +25,7 @@ pub use utils::git_util;
 pub use git_util::*;
 pub use models::*;
 
-
-
-
-use std::{
-    net::{Ipv4Addr, SocketAddr},
-    
-};
-
-use axum::{routing, Router, Server};
-use hyper::Error;
+use axum::{routing, Router};
 use utoipa::{
      OpenApi,
 };
@@ -53,7 +44,7 @@ pub use routes::rules::*;
  
  
 
-pub async fn start() -> Result<(), Error> {
+pub async fn start() -> Result<(), Box<dyn std::error::Error>> {
     #[derive(OpenApi)]
     #[openapi(
         paths(
@@ -84,9 +75,9 @@ pub async fn start() -> Result<(), Error> {
         .route("/rules/delete_rules_by_id", routing::post(delete_rules_by_id))
         .route("/rules/update", routing::post(update_rules));
 
-
-    let address = SocketAddr::from((Ipv4Addr::UNSPECIFIED, 7000));
-    Server::bind(&address).serve(app.into_make_service()).await
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:7000").await.unwrap();
+    axum::serve(listener, app.into_make_service()).await?;
+    Ok(())
 }
 
  
