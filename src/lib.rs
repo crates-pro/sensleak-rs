@@ -13,7 +13,7 @@ pub mod service{
     pub mod git_service;
 }
  
- pub use entity::models;
+pub use entity::models;
  
 
 pub use errors::*;
