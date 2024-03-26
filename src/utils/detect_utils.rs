@@ -378,7 +378,6 @@ pub fn append_rule_to_toml(rule: &Rule, filename: &str) -> Result<(), Box<dyn st
     // Open the file with read, write, and append options
     let mut file = OpenOptions::new()
         .read(true)
-        .write(true)
         .append(true)
         .open(filename)?;
 

@@ -109,8 +109,8 @@ pub fn handle_commits_file(
 
     let mut commits: Vec<String> = Vec::new();
 
-    // Read each line from the file and store it in the commits vector
-    for line in reader.lines().flatten() {
+    // Read each line from the file, stopping at the first error
+    for line in reader.lines().map_while(Result::ok) {
         commits.push(line);
     }
 
