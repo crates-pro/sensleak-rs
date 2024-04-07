@@ -35,7 +35,7 @@ pub async fn set_up_db() -> Result<DatabaseConnection, DbErr> {
 /// Returns a `Result<(), DbErr>` indicating the outcome of the operation:
 /// - `Ok(())` if the insertion is successful and the `Leaks` table is either found or successfully created.
 /// - `Err(DbErr)` if there is an error during the table check/creation or insertion process.
-pub async fn insert_leaks(_leaks: &Vec<Leak>) -> Result<(), DbErr> {
+pub async fn insert_leaks(_leaks: &[Leak]) -> Result<(), DbErr> {
     let db = match set_up_db().await {
         Ok(db) => db,
         Err(err) => panic!("{}", err),
@@ -87,11 +87,13 @@ pub async fn insert_leaks(_leaks: &Vec<Leak>) -> Result<(), DbErr> {
 ///
 /// Returns a `ConnectDbConfig` struct populated with the database connection details.
 fn get_db_config() -> ConnectDbConfig {
-    let mut config = ConnectDbConfig::default();
-    config.host = env::var("PG_HOST").unwrap_or("localhost".to_string());
-    config.port = env::var("PG_PORT").unwrap_or("5432".to_string());
-    config.user = env::var("PG_USER").unwrap_or("postgres".to_string());
-    config.password = env::var("PG_PASSWORD").unwrap_or("postgres".to_string());
-    config.dbname = env::var("PG_DBNAME").unwrap_or("postgres".to_string());
+    let config = ConnectDbConfig 
+    { 
+        host: env::var("PG_HOST").unwrap_or("localhost".to_string()), 
+        port: env::var("PG_PORT").unwrap_or("5432".to_string()), 
+        user: env::var("PG_USER").unwrap_or("postgres".to_string()), 
+        password: env::var("PG_PASSWORD").unwrap_or("postgres".to_string()), 
+        dbname: env::var("PG_DBNAME").unwrap_or("postgres".to_string()) 
+    };
     config
 }
