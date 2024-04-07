@@ -2,6 +2,7 @@ use chrono::{DateTime, FixedOffset};
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 use utoipa::{ToSchema};
+use sea_orm::{entity::prelude::*, ActiveValue};
 /// Represents the configuration for sensleaks tool.
 #[derive(Parser, Debug)]
 #[command(
@@ -98,6 +99,9 @@ pub struct Config {
     #[arg(long)]
     pub disk: Option<String>,
 
+    /// Output to database
+    #[arg(long)]
+    pub to_db: bool,
     // /// Start API
     // #[arg(long, default_value = "false")]
     // pub api: bool,
@@ -126,6 +130,7 @@ impl Default for Config {
             repo_config: false,
             debug: false,
             disk: None,
+            to_db: false,
             // api: false,
         }
     }
@@ -206,6 +211,31 @@ impl Default for Allowlist {
         Self::new()
     }
 }
+
+/// Sea-orm Entity
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "leaks")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    pub line: String,
+    pub line_number: u32,
+    pub offender: String,
+    pub commit: String,
+    pub repo: String,
+    pub rule: String,
+    pub commit_message: String,
+    pub author: String,
+    pub email: String,
+    pub file: String,
+    pub date: String,
+}
+
+#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+pub enum Relation {}
+
+impl ActiveModelBehavior for ActiveModel {}
+
 /// Represents an item in the scanned output.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Leak {
@@ -241,6 +271,25 @@ pub struct Leak {
 
     /// The date of the commit.
     pub date: String,
+}
+
+impl Leak {
+    pub fn to_active_model(&self) -> ActiveModel {
+        ActiveModel {
+            line: ActiveValue::set(self.line.clone()),
+            line_number: ActiveValue::set(self.line_number),
+            offender: ActiveValue::set(self.offender.clone()),
+            commit: ActiveValue::set(self.commit.clone()),
+            repo: ActiveValue::set(self.repo.clone()),
+            rule: ActiveValue::set(self.rule.clone()),
+            commit_message: ActiveValue::set(self.commit_message.clone()),
+            author: ActiveValue::set(self.author.clone()),
+            email: ActiveValue::set(self.email.clone()),
+            file: ActiveValue::set(self.file.clone()),
+            date: ActiveValue::set(self.date.clone()),
+            ..Default::default()
+        }
+    }
 }
 
 /// The scan condition
@@ -355,4 +404,38 @@ pub struct CsvResult {
 
     /// The date of the commit.
     pub date: String,
+}
+
+/// Config to connect to the database
+#[derive(Debug, Default,Serialize, Deserialize)]
+pub struct ConnectDbConfig {
+    /// The host of the database
+    pub host: String,
+    /// The user of the database
+    pub user: String,
+    /// The password of the database
+    pub password: String,
+    /// The name of the database
+    pub dbname: String,
+    /// The port of the database
+    pub port: String,
+}
+
+impl ConnectDbConfig {
+    /// Translate the config to connection url
+    pub fn to_connection_url(&self) -> String {
+        format!(
+            "postgresql://{}:{}@{}:{}/{}",
+            self.user, self.password, self.host, self.port, self.dbname
+        )
+    }
+    pub fn new() -> Self {
+        ConnectDbConfig {
+            host: String::from(""),
+            user: String::from(""),
+            password: String::from(""),
+            dbname: String::from(""),
+            port: String::from(""),
+        }
+    }
 }

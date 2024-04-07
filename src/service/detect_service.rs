@@ -6,6 +6,7 @@ use crate::utils::detect_utils::{
     load_config, remove_duplicates, write_csv_report, write_json_report, write_sarif_report,
 };
 use crate::utils::git_util::{clone_or_load_repository, extract_repo_name};
+use crate::service::db_service::insert_leaks;
 use chrono::Local;
 use clap::Parser;
 use git2::Repository;
@@ -17,10 +18,10 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 /// Starts the Git detector application.
-pub fn sensleaks() {
+pub async fn sensleaks() {
     let args = Config::parse();
 
-    match detect(args) {
+    match detect(args).await {
         Ok(results) => results,
         Err(err) => {
             eprintln!("Application: {}", err);
@@ -39,7 +40,7 @@ pub fn sensleaks() {
 ///
 /// Returns the detection results as a `Result` containing the scan results or an error.
 ///
-pub fn detect(config: Config) -> Result<Results, Box<dyn Error>> {
+pub async fn detect(config: Config) -> Result<Results, Box<dyn Error>> {
     // load repo and record the time of clone repo
     let start_clone_repo = Instant::now();
     let repo = clone_or_load_repository(&config)?;
@@ -59,7 +60,7 @@ pub fn detect(config: Config) -> Result<Results, Box<dyn Error>> {
     let results = process_scan(&config, repo, scan)?;
 
     // To output content in the console.
-    config_info_after_detect(&config, &results, start_scan, duration_repo)?;
+    config_info_after_detect(&config, &results, start_scan, duration_repo).await?;
 
     Ok(results)
 }
@@ -412,7 +413,7 @@ pub fn detect_uncommitted_file(
 ///
 /// This function can return an error if there are any issues during the post-detection actions, such as writing reports.
 ///
-fn config_info_after_detect(
+async fn  config_info_after_detect(
     config: &Config,
     results: &Results,
     start_scan: Instant,
@@ -433,6 +434,11 @@ fn config_info_after_detect(
     // If the debug flag is set, print the scan results to the console
     if config.debug {
         debug_info(duration_repo, duration_scan, results.commits_number);
+    }
+
+    // Output to database
+    if config.to_db {
+        insert_leaks(&results.outputs).await?;
     }
 
     // Write output report
@@ -538,7 +544,6 @@ mod tests {
         };
         let ruleslist: Vec<Rule> = vec![rule];
 
- 
         let allowlist = Allowlist {
             paths: vec![],
             commits: vec![],

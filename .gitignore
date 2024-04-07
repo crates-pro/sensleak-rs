@@ -15,3 +15,5 @@ Cargo.lock
 
 # Compiled binary file
 .gitignore
+
+log.sh

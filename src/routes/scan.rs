@@ -46,6 +46,9 @@ pub struct ConfigDto {
 
     /// Clones repo(s) to disk.
     pub disk: Option<String>,
+
+    /// Output to database
+    pub to_db: bool,
 }
 
 /// The return results of the scan.
@@ -94,8 +97,9 @@ pub async fn scan_repo(Json(json_config): Json<ConfigDto>) -> Json<ScanResponse>
     config.user = json_config.user;
     config.disk = json_config.disk;
     config.repo_config = json_config.repo_config.unwrap_or(false);
+    config.to_db = json_config.to_db;
 
-    match detect(config) {
+    match detect(config).await {
         Ok(results) => Json(ScanResponse {
             code: 200,
             leaks_number: Some(results.outputs.len()),
