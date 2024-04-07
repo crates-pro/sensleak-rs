@@ -87,13 +87,11 @@ pub async fn insert_leaks(_leaks: &[Leak]) -> Result<(), DbErr> {
 ///
 /// Returns a `ConnectDbConfig` struct populated with the database connection details.
 fn get_db_config() -> ConnectDbConfig {
-    let config = ConnectDbConfig 
-    { 
+    ConnectDbConfig { 
         host: env::var("PG_HOST").unwrap_or("localhost".to_string()), 
         port: env::var("PG_PORT").unwrap_or("5432".to_string()), 
         user: env::var("PG_USER").unwrap_or("postgres".to_string()), 
         password: env::var("PG_PASSWORD").unwrap_or("postgres".to_string()), 
         dbname: env::var("PG_DBNAME").unwrap_or("postgres".to_string()) 
-    };
-    config
+    }
 }
