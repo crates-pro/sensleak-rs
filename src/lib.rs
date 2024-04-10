@@ -1,37 +1,35 @@
 mod errors;
- 
+
 mod utils {
     pub mod detect_utils;
     pub mod git_util;
-
 }
+
 pub mod entity{
     pub mod models;
 }
+
 pub mod service{
     pub mod detect_service;
     pub mod git_service;
+    pub mod db_service;
 }
  
 pub use entity::models;
- 
-
 pub use errors::*;
- 
- 
 pub use utils::detect_utils;
 pub use utils::git_util;
- 
 pub use git_util::*;
 pub use models::*;
 
 use axum::{routing, Router};
+
 use utoipa::{
      OpenApi,
 };
+
 use utoipa_swagger_ui::SwaggerUi;
 
- 
 mod routes{
     pub mod scan;
     pub mod rules;
@@ -39,10 +37,7 @@ mod routes{
 pub use routes::scan::*;
 pub use routes::rules::*;
 
- use crate::routes::*;
-
- 
- 
+use crate::routes::*;
 
 pub async fn start() -> Result<(), Box<dyn std::error::Error>> {
     #[derive(OpenApi)]

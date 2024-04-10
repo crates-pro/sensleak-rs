@@ -33,18 +33,18 @@ cargo run --bin scan -- -help
 ```
 
 ```shell
-Usage: scan.exe [OPTIONS] --repo <REPO>
+Usage: scan [OPTIONS] --repo <REPO>
 
 Options:
       --repo <REPO>                    Target repository
       --config <CONFIG>                Config path [default: gitleaks.toml]
       --threads <THREADS>              Maximum number of threads sensleak spawns [default: 10]
-      --chunk <BATCH_SIZE>             The number of git files processed in each batch [default: 10]
+      --chunk <CHUNK>                  The number of files processed in each batch [default: 10]
       --report <REPORT>                Path to write json leaks file
       --report-format <REPORT_FORMAT>  json, csv, sarif [default: json]
   -v, --verbose                        Show verbose output from scan
       --pretty                         Pretty print json if leaks are present
-      --commit <COMMIT>                sha of commit to scan or "latest" to scan the last commit of the repository
+      --commit <COMMIT>                sha of commit to scan
       --commits <COMMITS>              comma separated list of a commits to scan
       --commits-file <COMMITS_FILE>    file of new line separated list of a commits to scan
       --commit-since <COMMIT_SINCE>    Scan commits more recent than a specific date. Ex: '2006-01-02' or '2023-01-02T15:04:05-0700' format
@@ -57,6 +57,7 @@ Options:
       --repo-config                    Load config from target repo. Config file must be ".gitleaks.toml" or "gitleaks.toml"
       --debug                          log debug messages
       --disk <DISK>                    Clones repo(s) to disk
+      --to-db                          Output to database
   -h, --help                           Print help (see more with '--help')
   -V, --version                        Print version
 
