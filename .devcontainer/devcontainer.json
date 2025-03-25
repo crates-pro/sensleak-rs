@@ -1,0 +1,24 @@
+{
+    "name": "Sensleak Development",
+    "build": {
+        "dockerfile": "./Dockerfile",
+        "args": {
+            "USERNAME": "rust", // Used for creating "/home/$USERNAME" directory within container
+            "USER_UID": "1000"
+        }
+    },
+    "workspaceFolder": "/workspace",
+    "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
+    "mounts": [],
+    "remoteUser": "rust",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "fill-labs.dependi",
+                "ms-azuretools.vscode-docker",
+                "saoudrizwan.claude-dev",
+                "tamasfe.even-better-toml"
+            ]
+        }
+    }
+}
