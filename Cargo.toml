@@ -37,3 +37,4 @@ toml = "0.8"
 utoipa = { version = "5.3", features = ["actix_extras"] }
 utoipa-swagger-ui = { version = "9.0", features = ["actix-web"] }
 walkdir = "2.5"
+zip = "=2.4.2" # !
