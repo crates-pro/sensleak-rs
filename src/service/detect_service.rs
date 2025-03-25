@@ -442,26 +442,20 @@ async fn  config_info_after_detect(
     }
 
     // Write output report
-    match &config.report {
-        Some(report) => {
-            match &config.report_format {
-                Some(format) => {
-                    if format == "sarif" {
-                        if write_sarif_report(report, &results.outputs).is_err() {
-                            return Err(Box::new(CustomError::ExportSarifError));
-                        }
-                    } else if format == "csv" {
-                        if write_csv_report(report, &results.outputs).is_err() {
-                            return Err(Box::new(CustomError::ExportCsvError));
-                        }
-                    } else if write_json_report(report, &results.outputs).is_err() {
-                        return Err(Box::new(CustomError::ExportJsonError));
-                    }
+    if let Some(report) = &config.report {
+        if let Some(format) = &config.report_format {
+            if format == "sarif" {
+                if write_sarif_report(report, &results.outputs).is_err() {
+                    return Err(Box::new(CustomError::ExportSarifError));
                 }
-                None => {}
-            };
-        }
-        None => {}
+            } else if format == "csv" {
+                if write_csv_report(report, &results.outputs).is_err() {
+                    return Err(Box::new(CustomError::ExportCsvError));
+                }
+            } else if write_json_report(report, &results.outputs).is_err() {
+                return Err(Box::new(CustomError::ExportJsonError));
+            }
+        };
     }
 
     println!(

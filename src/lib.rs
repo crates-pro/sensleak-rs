@@ -22,7 +22,7 @@ pub use utils::git_util;
 pub use git_util::*;
 pub use models::*;
 
-use actix_web::{web, App, HttpServer};
+use actix_web::{App, HttpServer};
 use actix_cors::Cors;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;

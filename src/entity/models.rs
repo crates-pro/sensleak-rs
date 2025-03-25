@@ -148,7 +148,7 @@ pub struct Rule {
     /// Regular expression used to detect secrets.
     pub regex: String,
 
-    /// Float representing the minimum shannon entropy a regex group must have to be considered a secret.
+    // /// Float representing the minimum shannon entropy a regex group must have to be considered a secret.
     // pub entropy: Option<f64>,
 
     /// Keywords are used for pre-regex check filtering. Rules that contain keywords will perform a quick string compare check to make sure the keyword(s) are in the content being scanned. Ideally these values should either be part of the idenitifer or unique strings specific to the rule's regex
