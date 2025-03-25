@@ -22,12 +22,9 @@ pub use utils::git_util;
 pub use git_util::*;
 pub use models::*;
 
-use axum::{routing, Router};
-
-use utoipa::{
-     OpenApi,
-};
-
+use actix_web::{web, App, HttpServer};
+use actix_cors::Cors;
+use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
 mod routes{
@@ -50,29 +47,37 @@ pub async fn start() -> Result<(), Box<dyn std::error::Error>> {
             rules::update_rules
         ),
         components(
-            schemas(ConfigDto,ScanResponse,RulesDto,JsonResponse,Rule,Allowlist)
+            schemas(ConfigDto,ScanResponse,RulesDto,JsonResponse,Rule,Allowlist,Leak)
         ),
      
         tags(
             (name = "scan", description = "Scan Git repositories API"),
             (name = "rules", description = "Rules management API"),
-
         )
     )]
     struct ApiDoc;
 
- 
-    let app = Router::new()
-        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
-        .route("/scan", routing::post(scan_repo))
-        .route("/rules/get_all", routing::post(get_all))
-        .route("/rules/add_rules", routing::post(add_rules))
-        .route("/rules/delete_rules_by_id", routing::post(delete_rules_by_id))
-        .route("/rules/update", routing::post(update_rules));
+    HttpServer::new(|| {
+        let cors = Cors::default()
+            .allow_any_origin()
+            .allow_any_method()
+            .allow_any_header();
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:7000").await.unwrap();
-    axum::serve(listener, app.into_make_service()).await?;
+        App::new()
+            .wrap(cors)
+            .service(
+                SwaggerUi::new("/swagger-ui/{_:.*}")
+                    .url("/api-docs/openapi.json", ApiDoc::openapi())
+            )
+            .service(scan_repo)
+            .service(rules::get_all)
+            .service(rules::add_rules)
+            .service(rules::delete_rules_by_id)
+            .service(rules::update_rules)
+    })
+    .bind("0.0.0.0:7000")?
+    .run()
+    .await?;
+
     Ok(())
 }
-
- 

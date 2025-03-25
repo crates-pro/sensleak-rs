@@ -1,4 +1,4 @@
-use axum::Json;
+use actix_web::{post, web, HttpResponse, Responder};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -78,36 +78,37 @@ pub struct ScanResponse {
         (status = 400, description = "fail", body = ScanResponse)
     )
 )]
-pub async fn scan_repo(Json(json_config): Json<ConfigDto>) -> Json<ScanResponse> {
+#[post("/scan")]
+pub async fn scan_repo(json_config: web::Json<ConfigDto>) -> impl Responder {
     let mut config: Config = Default::default();
-    config.repo = json_config.repo;
-    config.config = json_config.config;
-    config.report = json_config.report;
+    config.repo = json_config.repo.clone();
+    config.config = json_config.config.clone();
+    config.report = json_config.report.clone();
     config.threads = json_config.threads;
     config.chunk = json_config.chunk;
-    config.report_format = json_config.report_format;
-    config.commit = json_config.commit;
-    config.commits = json_config.commits;
-    config.commit_from = json_config.commit_from;
-    config.commit_to = json_config.commit_to;
-    config.commit_since = json_config.commit_since;
-    config.commits_file = json_config.commits_file;
-    config.branch = json_config.branch;
+    config.report_format = json_config.report_format.clone();
+    config.commit = json_config.commit.clone();
+    config.commits = json_config.commits.clone();
+    config.commit_from = json_config.commit_from.clone();
+    config.commit_to = json_config.commit_to.clone();
+    config.commit_since = json_config.commit_since.clone();
+    config.commits_file = json_config.commits_file.clone();
+    config.branch = json_config.branch.clone();
     config.uncommitted = false;
-    config.user = json_config.user;
-    config.disk = json_config.disk;
+    config.user = json_config.user.clone();
+    config.disk = json_config.disk.clone();
     config.repo_config = json_config.repo_config.unwrap_or(false);
     config.to_db = json_config.to_db;
 
     match detect(config).await {
-        Ok(results) => Json(ScanResponse {
+        Ok(results) => HttpResponse::Ok().json(ScanResponse {
             code: 200,
             leaks_number: Some(results.outputs.len()),
             commits_number: Some(results.commits_number),
             leaks: Some(results.outputs),
             message: None,
         }),
-        Err(err) => Json(ScanResponse {
+        Err(err) => HttpResponse::BadRequest().json(ScanResponse {
             code: 400,
             message: Some(err.to_string()),
             leaks_number: None,
@@ -122,13 +123,10 @@ pub async fn scan_repo(Json(json_config): Json<ConfigDto>) -> Json<ScanResponse>
 #[cfg(test)]
 mod tests {
     // use super::*;
-    // use axum::{
-    //     extract::Json,
- 
-    // };
+    // use actix_web::{test, web, App};
+    // use actix_web::http::StatusCode;
     
-
-    // #[tokio::test]
+    // #[actix_web::test]
     // async fn test_scan_repo_success() {
     //     let config = ConfigDto {
     //         repo: String::from("example/repo"),
@@ -149,15 +147,25 @@ mod tests {
     //         uncommitted: Some(false),
     //         user: Some(String::from("john")),
     //         disk: Some(String::from("path/to/disk")),
+    //         to_db: false,
     //     };
-
-    //     let json_config = Json(config);
-    //     let response = scan_repo(json_config).await;
-        
-    //     assert_eq!(response.code, 200);
-    //     assert_eq!(response.leaks_number, Some(10));
-    //     assert_eq!(response.commits_number, Some(2));
-    //     assert_eq!(response.message, None);
-   
+    //
+    //     let app = test::init_service(
+    //         App::new().service(scan_repo)
+    //     ).await;
+    //
+    //     let req = test::TestRequest::post()
+    //         .uri("/scan")
+    //         .set_json(&config)
+    //         .to_request();
+    //
+    //     let resp = test::call_service(&app, req).await;
+    //     assert_eq!(resp.status(), StatusCode::OK);
+    //
+    //     let body: ScanResponse = test::read_body_json(resp).await;
+    //     assert_eq!(body.code, 200);
+    //     assert_eq!(body.leaks_number, Some(10));
+    //     assert_eq!(body.commits_number, Some(2));
+    //     assert_eq!(body.message, None);
     // }
 }

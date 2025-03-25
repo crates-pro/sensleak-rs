@@ -7,7 +7,7 @@ use sea_orm::{entity::prelude::*, ActiveValue};
 #[derive(Parser, Debug)]
 #[command(
     author = "yjchen",
-    version = "0.1.0",
+    version = "0.3.0",
     about = "sensleaks-rs",
     long_about = "sensleaks: A tool to detect sensitive information in Git repository",
     after_help = "run 'cargo run --bin api' to get REST API.\nRepository: https://github.com/open-rust-initiative/sensleak-rs"
@@ -237,7 +237,7 @@ pub enum Relation {}
 impl ActiveModelBehavior for ActiveModel {}
 
 /// Represents an item in the scanned output.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct Leak {
     /// The line containing the sensitive information.
     pub line: String,

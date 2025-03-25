@@ -19,7 +19,7 @@ Many developers store sensitive information such as keys and certificates in the
 - Development Language: Rust
 - Command-line Interaction: [clap.rs](https://github.com/clap-rs/clap)
 - Git Repository Operations: [git2](https://github.com/rust-lang/git2-rs)
-- Web Framework: [axum](https://github.com/tokio-rs/axum)
+- Web Framework: [actix-web](https://actix.rs)
 - Auto-generated OpenAPI Documentation: [utoipa](https://github.com/juhaku/utoipa)
 
 ## Usage
